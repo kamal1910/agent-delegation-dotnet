@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AgentDelegation.AspNetCore/AgentDelegation.AspNetCore.csproj" />
+    <Project Path="src/AgentDelegation.SemanticKernel/AgentDelegation.SemanticKernel.csproj" />
+    <Project Path="src/AgentDelegation/AgentDelegation.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AgentDelegation.Tests/AgentDelegation.Tests.csproj" />
+  </Folder>
+</Solution>

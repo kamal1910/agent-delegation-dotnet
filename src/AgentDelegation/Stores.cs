@@ -1,0 +1,82 @@
+using System.Collections.Concurrent;
+
+namespace AgentDelegation;
+
+/// <summary>A tool call to authorize.</summary>
+public sealed record ToolAction(string Action, string Recipient, decimal Amount);
+
+/// <summary>A record of one authorization decision.</summary>
+public sealed record Receipt(
+    string RootId,
+    string ChainHash,
+    ToolAction Action,
+    string Decision,
+    string Reason,
+    DateTimeOffset At,
+    string? IdempotencyKey = null);
+
+/// <summary>A receipt signed by the gateway, or unsigned when no gateway key is configured.</summary>
+public sealed record SignedReceipt(Receipt Receipt, string? Signature);
+
+/// <summary>
+/// Spend shared by every branch of one delegation tree. Production implementations need an atomic
+/// decrement, e.g. a Redis script or a conditional SQL update.
+/// </summary>
+public interface IBudgetStore
+{
+    /// <summary>
+    /// Consumes <paramref name="amount"/> from the tree's budget, which starts at <paramref name="limit"/>.
+    /// Returns false, consuming nothing, when it would go over.
+    /// </summary>
+    Task<bool> TryConsumeAsync(string rootId, decimal limit, decimal amount, CancellationToken ct = default);
+}
+
+/// <summary>Append-only store of receipts.</summary>
+public interface IReceiptLedger
+{
+    /// <summary>Appends a receipt.</summary>
+    Task AppendAsync(SignedReceipt receipt, CancellationToken ct = default);
+
+    /// <summary>Finds an earlier allowed receipt for the same tree and idempotency key.</summary>
+    Task<SignedReceipt?> FindAllowedAsync(string rootId, string idempotencyKey, CancellationToken ct = default);
+}
+
+/// <summary>Process-local budget store for tests and single-instance demos.</summary>
+public sealed class InMemoryBudgetStore : IBudgetStore
+{
+    readonly ConcurrentDictionary<string, decimal> _spent = new();
+
+    /// <inheritdoc />
+    public Task<bool> TryConsumeAsync(string rootId, decimal limit, decimal amount, CancellationToken ct = default)
+    {
+        while (true)
+        {
+            decimal spent = _spent.GetOrAdd(rootId, 0m);
+            if (spent + amount > limit) return Task.FromResult(false);
+            if (_spent.TryUpdate(rootId, spent + amount, spent)) return Task.FromResult(true);
+        }
+    }
+}
+
+/// <summary>Process-local receipt ledger for tests and single-instance demos.</summary>
+public sealed class InMemoryReceiptLedger : IReceiptLedger
+{
+    readonly ConcurrentQueue<SignedReceipt> _receipts = new();
+
+    /// <summary>All receipts in the order they were written.</summary>
+    public IReadOnlyCollection<SignedReceipt> Receipts => _receipts;
+
+    /// <inheritdoc />
+    public Task AppendAsync(SignedReceipt receipt, CancellationToken ct = default)
+    {
+        _receipts.Enqueue(receipt);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task<SignedReceipt?> FindAllowedAsync(string rootId, string idempotencyKey, CancellationToken ct = default) =>
+        Task.FromResult(_receipts.FirstOrDefault(r =>
+            r.Receipt.RootId == rootId &&
+            r.Receipt.IdempotencyKey == idempotencyKey &&
+            r.Receipt.Decision == DelegationAuthorizer.Allow));
+}

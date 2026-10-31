@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <PackageId>AgentDelegation.AspNetCore</PackageId>
+    <Description>ASP.NET Core gateway middleware for AgentDelegation. Place it in front of tool APIs or YARP to enforce signed delegation chains on every call.</Description>
+    <PackageTags>$(PackageTags);aspnetcore;yarp;gateway;middleware</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\AgentDelegation\AgentDelegation.csproj" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

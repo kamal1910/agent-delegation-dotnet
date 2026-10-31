@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <PackageId>AgentDelegation</PackageId>
+    <Description>Signed, attenuating delegation chains for AI agents: intersection authority, proof of possession, tree-wide budgets, receipts and untrusted-result wrapping.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="AgentDelegation.Tests" />
+  </ItemGroup>
+
+</Project>

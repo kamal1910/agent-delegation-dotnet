@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <PackageId>AgentDelegation.SemanticKernel</PackageId>
+    <Description>Semantic Kernel function filter that marks every tool and sub-agent result as untrusted before the model reads it.</Description>
+    <PackageTags>$(PackageTags);semantic-kernel;prompt-injection</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);SKEXP0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SemanticKernel.Abstractions" Version="1.80.0" />
+    <ProjectReference Include="..\AgentDelegation\AgentDelegation.csproj" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>
