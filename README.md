@@ -23,6 +23,32 @@ dotnet add package AgentDelegation.SemanticKernel
 
 Targets .NET 8 and .NET 9.
 
+## Try the working model
+
+[`samples/RefundDemo`](https://github.com/kamal1910/agent-delegation-dotnet/tree/main/samples/RefundDemo) runs a user,
+a support agent, a payments agent, the gateway and a fake payments tool in one process, then fires every attack at it:
+
+```bash
+git clone https://github.com/kamal1910/agent-delegation-dotnet
+cd agent-delegation-dotnet
+dotnet run --project samples/RefundDemo
+```
+
+```text
+  Refund $1,200 to C-881                           ALLOWED  refunded $1,200.00 to C-881
+  Retry with the same Idempotency-Key              ALLOWED  refunded $1,200.00 to C-881
+  Injected: refund to account X-999                DENIED   403 recipient not allowed
+  Injected: refund $5,000                          DENIED   403 amount over limit
+  Support agent replays the payments chain         DENIED   403 caller is not the chain holder
+  Payments agent delegates further                 DENIED   Delegation depth exhausted.
+  Payments agent appends a wider block             DENIED   403 scope widened at hop 2
+  Someone edits the root amount                    DENIED   403 bad signature at hop 0
+  Second branch tries another $1,200               DENIED   403 tree budget exhausted
+
+Refunds actually issued: 1
+Receipts written: 7 (1 allow, 6 deny), all signed: True
+```
+
 ## The seven rules
 
 1. **A user-signed root ticket anchors every chain.** Every later block links back to it by hash.

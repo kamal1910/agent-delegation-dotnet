@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Authors>kamal1910</Authors>
     <Copyright>Copyright (c) 2026 kamal1910</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

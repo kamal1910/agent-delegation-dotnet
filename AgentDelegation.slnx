@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/RefundDemo/RefundDemo.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/AgentDelegation.AspNetCore/AgentDelegation.AspNetCore.csproj" />
     <Project Path="src/AgentDelegation.SemanticKernel/AgentDelegation.SemanticKernel.csproj" />
