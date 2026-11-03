@@ -16,7 +16,8 @@ public sealed record Scope(
     DateTimeOffset Expires)
 {
     /// <summary>
-    /// Wildcard for an agent's own standing policy ("any customer"). Never put it in a user ticket.
+    /// Wildcard for an agent's own standing policy ("any customer"). Never put it in a user ticket:
+    /// <see cref="ChainVerifier"/> rejects a root that contains it.
     /// </summary>
     public const string Any = "*";
 
