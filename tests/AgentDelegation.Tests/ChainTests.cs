@@ -179,4 +179,32 @@ public sealed class ChainTests : IDisposable
         Assert.Equal(1, wrapped.Split("</untrusted>").Length - 1);
         Assert.Contains("&lt;/untrusted>", wrapped);
     }
+
+    [Fact]
+    public async Task Async_signers_issue_and_delegate_chains_that_verify()
+    {
+        RemoteSigner user = new(_s.UserKey);
+        RemoteSigner support = new(_s.SupportKey);
+
+        DelegationChain root = await DelegationChain.IssueAsync(user,
+            new Scope(["payments.refund"], ["C-881"], 1200m, MaxDepth: 1, _s.Now.AddHours(1)),
+            "Refund order #4471", support.PublicKey);
+        DelegationChain toPayments = await root.DelegateAsync(support,
+            new Scope(["payments.refund"], ["C-881"], 1200m, 0, _s.Now.AddMinutes(10)),
+            _s.PaymentsPolicy, "Issue refund", DelegationCrypto.PublicKey(_s.PaymentsKey));
+
+        VerifyResult r = Verify(toPayments);
+        Assert.True(r.Ok, r.Reason);
+        Assert.Equal(1, user.Calls);
+        Assert.Equal(1, support.Calls);
+    }
+
+    [Fact]
+    public async Task Async_delegate_checks_the_holder()
+    {
+        RemoteSigner stranger = new(_s.PaymentsKey);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _s.Root.DelegateAsync(stranger,
+            _s.PaymentsPolicy, _s.PaymentsPolicy, "steal", stranger.PublicKey));
+    }
 }

@@ -18,8 +18,11 @@ public sealed class DelegationGatewayOptions
     /// </summary>
     public Dictionary<string, Scope> AgentPolicies { get; set; } = new(StringComparer.Ordinal);
 
-    /// <summary>Optional gateway key used to sign receipts. Keep it in an HSM or Key Vault in production.</summary>
+    /// <summary>Optional in-process gateway key used to sign receipts. Ignored when <see cref="ReceiptSigner"/> is set.</summary>
     public ECDsa? ReceiptSigningKey { get; set; }
+
+    /// <summary>Optional gateway signer for receipts, e.g. a Key Vault key.</summary>
+    public IDelegationSigner? ReceiptSigner { get; set; }
 
     /// <summary>How far a request's signed timestamp may be from the gateway's clock. Defaults to 2 minutes.</summary>
     public TimeSpan MaxClockSkew { get; set; } = TimeSpan.FromMinutes(2);
@@ -56,10 +59,13 @@ public static class DelegationGatewayExtensions
             sp.GetRequiredService<IAgentPolicyRegistry>(),
             sp.GetRequiredService<INonceStore>(),
             sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<IOptions<DelegationGatewayOptions>>().Value.ReceiptSigningKey,
+            ReceiptSigner(sp.GetRequiredService<IOptions<DelegationGatewayOptions>>().Value),
             sp.GetRequiredService<IOptions<DelegationGatewayOptions>>().Value.MaxClockSkew));
         return services;
     }
+
+    static IDelegationSigner? ReceiptSigner(DelegationGatewayOptions o) =>
+        o.ReceiptSigner ?? (o.ReceiptSigningKey is { } key ? new EcdsaSigner(key) : null);
 
     /// <summary>Adds the gateway middleware. Place it before <c>MapReverseProxy()</c> or your tool endpoints.</summary>
     public static IApplicationBuilder UseDelegationGateway(this IApplicationBuilder app) =>

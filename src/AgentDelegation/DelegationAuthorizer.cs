@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-
 namespace AgentDelegation;
 
 /// <summary>Everything the gateway knows about one incoming tool call.</summary>
@@ -31,7 +29,7 @@ public sealed record AuthorizationDecision(bool Allowed, string Reason, SignedRe
 /// <param name="policies">Each agent's standing policy.</param>
 /// <param name="nonces">Used request nonces.</param>
 /// <param name="time">Clock for expiry and freshness checks.</param>
-/// <param name="receiptKey">Optional gateway key that signs receipts.</param>
+/// <param name="receiptSigner">Optional gateway signer for receipts.</param>
 /// <param name="maxClockSkew">How far a request's timestamp may be from the gateway's clock. Defaults to 2 minutes.</param>
 public sealed class DelegationAuthorizer(
     IBudgetStore budgets,
@@ -39,7 +37,7 @@ public sealed class DelegationAuthorizer(
     IAgentPolicyRegistry policies,
     INonceStore nonces,
     TimeProvider time,
-    ECDsa? receiptKey = null,
+    IDelegationSigner? receiptSigner = null,
     TimeSpan? maxClockSkew = null)
 {
     readonly TimeSpan _skew = maxClockSkew ?? TimeSpan.FromMinutes(2);
@@ -99,7 +97,10 @@ public sealed class DelegationAuthorizer(
     {
         Receipt receipt = new(rootId, request.Chain.ChainHash, request.Action,
                               decision, reason, time.GetUtcNow(), request.IdempotencyKey);
-        SignedReceipt signed = new(receipt, receiptKey is null ? null : DelegationCrypto.Sign(receiptKey, receipt));
+        string? signature = receiptSigner is null
+            ? null
+            : Convert.ToBase64String(await receiptSigner.SignAsync(DelegationCrypto.Canonical(receipt), ct));
+        SignedReceipt signed = new(receipt, signature);
         await ledger.AppendAsync(signed, ct);
         return new(decision == Allow, reason, signed);
     }

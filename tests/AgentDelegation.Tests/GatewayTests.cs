@@ -49,8 +49,11 @@ public sealed class GatewayTests : IAsyncLifetime
         _s.Dispose();
     }
 
-    HttpClient Client(ECDsa agentKey, string user = "alice", HttpMessageHandler? inner = null) =>
-        new(new DelegationHandler(agentKey, user, new FixedTime(_s.Now))
+    HttpClient Client(ECDsa agentKey, string? user = "alice", HttpMessageHandler? inner = null) =>
+        Client(new EcdsaSigner(agentKey), user, inner);
+
+    HttpClient Client(IDelegationSigner signer, string? user = "alice", HttpMessageHandler? inner = null) =>
+        new(new DelegationHandler(signer, user, new FixedTime(_s.Now))
         {
             InnerHandler = inner ?? _host.GetTestServer().CreateHandler(),
         })
@@ -177,5 +180,43 @@ public sealed class GatewayTests : IAsyncLifetime
             Body = request.Content is null ? [] : await request.Content.ReadAsByteArrayAsync(ct);
             return await base.SendAsync(request, ct);
         }
+    }
+
+    [Fact]
+    public async Task One_agent_client_serves_many_users_with_a_per_request_user()
+    {
+        HttpClient shared = Client(_s.PaymentsKey, user: null);
+
+        HttpRequestMessage forAlice = Refund(_s.ToPayments, amount: 10m);
+        forAlice.Options.Set(DelegationHandler.UserIdKey, "alice");
+        HttpRequestMessage forMallory = Refund(_s.ToPayments, amount: 10m);
+        forMallory.Options.Set(DelegationHandler.UserIdKey, "mallory");
+
+        HttpResponseMessage alice = await shared.SendAsync(forAlice);
+        HttpResponseMessage mallory = await shared.SendAsync(forMallory);
+
+        Assert.Equal(HttpStatusCode.OK, alice.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, mallory.StatusCode);
+        Assert.Equal(1, _toolCalls);
+    }
+
+    [Fact]
+    public async Task A_request_without_any_user_fails_before_sending()
+    {
+        HttpClient shared = Client(_s.PaymentsKey, user: null);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => shared.SendAsync(Refund(_s.ToPayments)));
+        Assert.Equal(0, _toolCalls);
+    }
+
+    [Fact]
+    public async Task Agents_can_sign_with_an_external_signer()
+    {
+        RemoteSigner vault = new(_s.PaymentsKey);
+
+        HttpResponseMessage res = await Client(vault).SendAsync(Refund(_s.ToPayments));
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal(1, vault.Calls);
     }
 }

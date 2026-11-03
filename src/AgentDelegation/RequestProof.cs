@@ -43,6 +43,10 @@ public sealed record RequestProof(
     /// <summary>Signs this proof with the holder's key.</summary>
     public string Sign(ECDsa holderKey) => DelegationCrypto.SignBytes(holderKey, SigningBytes());
 
+    /// <summary>Signs this proof with the holder's <see cref="IDelegationSigner"/>.</summary>
+    public async Task<string> SignAsync(IDelegationSigner holder, CancellationToken ct = default) =>
+        Convert.ToBase64String(await holder.SignAsync(SigningBytes(), ct));
+
     /// <summary>Verifies a signature against the holder's public key.</summary>
     public bool Verify(string holderPublicKey, string signature) =>
         !ContainsNewline() && DelegationCrypto.VerifyBytes(holderPublicKey, SigningBytes(), signature);

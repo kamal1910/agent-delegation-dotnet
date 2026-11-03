@@ -11,7 +11,8 @@ public sealed class AuthorizerTests : IDisposable
     public AuthorizerTests() => _authorizer = New(_s.Policies);
 
     DelegationAuthorizer New(IAgentPolicyRegistry policies, ECDsa? receiptKey = null) =>
-        new(new InMemoryBudgetStore(), _ledger, policies, new InMemoryNonceStore(), new FixedTime(_s.Now), receiptKey);
+        new(new InMemoryBudgetStore(), _ledger, policies, new InMemoryNonceStore(), new FixedTime(_s.Now),
+            receiptKey is null ? null : new EcdsaSigner(receiptKey));
 
     public void Dispose() => _s.Dispose();
 

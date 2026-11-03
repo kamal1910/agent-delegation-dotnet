@@ -145,6 +145,59 @@ gateway instance.
 The agent signs the path it sent. If something in front of the gateway rewrites paths, the signature won't match,
 so put the gateway at the edge or keep paths unchanged up to it.
 
+### One agent, many users
+
+A shared agent service usually acts for many users. Leave the user out of the handler and set it per request:
+
+```csharp
+builder.Services.AddHttpClient("gateway", c => c.BaseAddress = new Uri("https://gateway.internal/"))
+    .AddHttpMessageHandler(() => new DelegationHandler(agentSigner));   // no default user
+
+HttpRequestMessage req = new(HttpMethod.Post, "refunds") { Content = JsonContent.Create(action) };
+req.Options.Set(DelegationHandler.ChainKey, chain);
+req.Options.Set(DelegationHandler.UserIdKey, task.UserId);             // whose ticket this chain starts from
+```
+
+A request with neither a per-request nor a default user fails before it is sent.
+
+### Keys in Azure Key Vault or an HSM
+
+Anything that can sign with ECDSA P-256 / SHA-256 can implement `IDelegationSigner`, so private keys never have
+to leave Key Vault or an HSM. Use it for the user's root ticket (`DelegationChain.IssueAsync`), hand-offs
+(`DelegateAsync`), agent requests (`new DelegationHandler(signer)`) and gateway receipts (`o.ReceiptSigner`).
+`EcdsaSigner` wraps an in-process key.
+
+A Key Vault signer using `Azure.Security.KeyVault.Keys` (create the key as type `EC`, curve `P-256`). This is a
+sketch, not part of the packages, and not yet tested against a live vault:
+
+```csharp
+using Azure.Core;
+using Azure.Security.KeyVault.Keys;
+using Azure.Security.KeyVault.Keys.Cryptography;
+
+public sealed class KeyVaultSigner(CryptographyClient crypto, string publicKey) : IDelegationSigner
+{
+    public string PublicKey { get; } = publicKey;
+
+    // Key Vault's ES256 returns r || s, the format the gateway verifies.
+    public async Task<byte[]> SignAsync(byte[] data, CancellationToken ct = default) =>
+        (await crypto.SignDataAsync(SignatureAlgorithm.ES256, data, ct)).Signature;
+
+    public static async Task<KeyVaultSigner> CreateAsync(Uri vault, string keyName, TokenCredential credential)
+    {
+        KeyVaultKey key = await new KeyClient(vault, credential).GetKeyAsync(keyName);
+        using ECDsa publicOnly = key.Key.ToECDsa();
+        return new(new CryptographyClient(key.Id, credential), DelegationCrypto.PublicKey(publicOnly));
+    }
+}
+
+IDelegationSigner paymentsAgent = await KeyVaultSigner.CreateAsync(
+    new Uri("https://my-vault.vault.azure.net/"), "payments-agent", new DefaultAzureCredential());
+```
+
+Each signature is a call to Key Vault, so expect a few milliseconds per request and watch Key Vault's
+request limits for busy agents.
+
 ### Semantic Kernel
 
 ```csharp
@@ -203,7 +256,7 @@ The library has no Dapr dependency, but it fits Dapr Workflow cleanly:
 
 This is a reference implementation of the design, not an audited token format. For production:
 
-- Keep private keys in an HSM or Azure Key Vault.
+- Keep private keys in an HSM or Azure Key Vault, through `IDelegationSigner` (see above).
 - Implement `IBudgetStore` with an atomic decrement (Redis script, conditional SQL update).
 - Back `INonceStore` and `IIdempotentResponseCache` with a shared store so replay protection holds across gateway instances.
 - Keep gateway clocks in sync (NTP); requests outside `MaxClockSkew` are refused.

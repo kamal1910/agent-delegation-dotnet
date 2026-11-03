@@ -51,3 +51,18 @@ sealed class FixedTime(DateTimeOffset now) : TimeProvider
 {
     public override DateTimeOffset GetUtcNow() => now;
 }
+
+/// <summary>Stands in for a Key Vault or HSM signer: async, and the private key never leaves it.</summary>
+sealed class RemoteSigner(ECDsa key) : IDelegationSigner
+{
+    public int Calls { get; private set; }
+
+    public string PublicKey { get; } = DelegationCrypto.PublicKey(key);
+
+    public async Task<byte[]> SignAsync(byte[] data, CancellationToken ct = default)
+    {
+        await Task.Yield();
+        Calls++;
+        return key.SignData(data, HashAlgorithmName.SHA256);
+    }
+}

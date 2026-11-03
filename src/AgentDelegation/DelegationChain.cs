@@ -58,6 +58,13 @@ public sealed class SignedBlock
         return new(Convert.ToBase64String(bytes), DelegationCrypto.SignBytes(key, bytes));
     }
 
+    /// <summary>Serializes <paramref name="block"/> once and signs those bytes with <paramref name="signer"/>.</summary>
+    public static async Task<SignedBlock> SignAsync(IDelegationSigner signer, Block block, CancellationToken ct = default)
+    {
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(block, DelegationCrypto.Json);
+        return new(Convert.ToBase64String(bytes), Convert.ToBase64String(await signer.SignAsync(bytes, ct)));
+    }
+
     /// <summary>Encodes a block as a payload without signing it, for building or inspecting blocks by hand.</summary>
     public static string EncodePayload(Block block) =>
         Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(block, DelegationCrypto.Json));
@@ -85,11 +92,16 @@ public sealed record DelegationChain(IReadOnlyList<SignedBlock> Blocks)
     /// total spend across the tree; it defaults to the scope's per-action <see cref="Scope.MaxAmount"/>.
     /// </summary>
     public static DelegationChain Issue(ECDsa userKey, Scope scope, string intent, string firstAgentKey,
-                                        decimal? treeBudget = null)
-    {
-        Block root = new(scope, intent, firstAgentKey, PrevHash: "", treeBudget);
-        return new([SignedBlock.Sign(userKey, root)]);
-    }
+                                        decimal? treeBudget = null) =>
+        new([SignedBlock.Sign(userKey, new Block(scope, intent, firstAgentKey, PrevHash: "", treeBudget))]);
+
+    /// <summary>
+    /// Like <see cref="Issue"/>, but signs with an <see cref="IDelegationSigner"/> such as a Key Vault key.
+    /// </summary>
+    public static async Task<DelegationChain> IssueAsync(IDelegationSigner userSigner, Scope scope, string intent,
+                                                         string firstAgentKey, decimal? treeBudget = null,
+                                                         CancellationToken ct = default) =>
+        new([await SignedBlock.SignAsync(userSigner, new Block(scope, intent, firstAgentKey, PrevHash: "", treeBudget), ct)]);
 
     /// <summary>
     /// The current holder hands off a subtask. The new scope is
@@ -99,10 +111,25 @@ public sealed record DelegationChain(IReadOnlyList<SignedBlock> Blocks)
     /// Thrown when <paramref name="holderKey"/> is not the current holder or depth is exhausted.
     /// </exception>
     public DelegationChain Delegate(ECDsa holderKey, Scope requested, Scope delegateeOwn,
-                                    string subtask, string delegateeKey)
+                                    string subtask, string delegateeKey) =>
+        new([.. Blocks, SignedBlock.Sign(holderKey,
+            NextBlock(DelegationCrypto.PublicKey(holderKey), requested, delegateeOwn, subtask, delegateeKey))]);
+
+    /// <summary>
+    /// Like <see cref="Delegate"/>, but signs with an <see cref="IDelegationSigner"/> such as a Key Vault key.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when <paramref name="holder"/> is not the current holder or depth is exhausted.
+    /// </exception>
+    public async Task<DelegationChain> DelegateAsync(IDelegationSigner holder, Scope requested, Scope delegateeOwn,
+                                                     string subtask, string delegateeKey, CancellationToken ct = default) =>
+        new([.. Blocks, await SignedBlock.SignAsync(holder,
+            NextBlock(holder.PublicKey, requested, delegateeOwn, subtask, delegateeKey), ct)]);
+
+    Block NextBlock(string holderPublicKey, Scope requested, Scope delegateeOwn, string subtask, string delegateeKey)
     {
         SignedBlock parent = Blocks[^1];
-        if (DelegationCrypto.PublicKey(holderKey) != parent.Block.HolderKey)
+        if (holderPublicKey != parent.Block.HolderKey)
             throw new InvalidOperationException("Only the current holder can delegate.");
         if (parent.Block.Scope.MaxDepth <= 0)
             throw new InvalidOperationException("Delegation depth exhausted.");
@@ -110,8 +137,7 @@ public sealed record DelegationChain(IReadOnlyList<SignedBlock> Blocks)
         Scope scope = parent.Block.Scope.Intersect(requested).Intersect(delegateeOwn)
             with { MaxDepth = Math.Min(Math.Min(requested.MaxDepth, delegateeOwn.MaxDepth), parent.Block.Scope.MaxDepth - 1) };
 
-        Block block = new(scope, subtask, delegateeKey, parent.Hash);
-        return new([.. Blocks, SignedBlock.Sign(holderKey, block)]);
+        return new Block(scope, subtask, delegateeKey, parent.Hash);
     }
 
     /// <summary>Encodes the chain for an HTTP header.</summary>
