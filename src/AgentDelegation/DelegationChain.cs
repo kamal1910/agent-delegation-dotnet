@@ -4,7 +4,15 @@ using System.Text.Json;
 namespace AgentDelegation;
 
 /// <summary>One hop of authority: what the holder may do, why, and a link to the previous block.</summary>
-public sealed record Block(Scope Scope, string Task, string HolderKey, string PrevHash);
+/// <param name="Scope">What the holder may do.</param>
+/// <param name="Task">The task or subtask, in plain language.</param>
+/// <param name="HolderKey">Base64 public key of the agent that holds this block and may sign the next one.</param>
+/// <param name="PrevHash">Hash of the previous block; empty for the root.</param>
+/// <param name="TreeBudget">
+/// Total spend shared by the whole delegation tree. Only the root may set it; when unset the root's
+/// <see cref="Scope.MaxAmount"/> is used.
+/// </param>
+public sealed record Block(Scope Scope, string Task, string HolderKey, string PrevHash, decimal? TreeBudget = null);
 
 /// <summary>A block plus the signature of whoever held the previous block (the user, for the root).</summary>
 public sealed record SignedBlock(Block Block, string Signature);
@@ -20,10 +28,17 @@ public sealed record DelegationChain(IReadOnlyList<SignedBlock> Blocks)
     /// <summary>The block that currently holds authority.</summary>
     public Block Last => Blocks[^1].Block;
 
-    /// <summary>The user signs a root ticket and names the first agent as holder.</summary>
-    public static DelegationChain Issue(ECDsa userKey, Scope scope, string intent, string firstAgentKey)
+    /// <summary>Total spend allowed across every branch of this tree.</summary>
+    public decimal TreeBudget => Blocks[0].Block.TreeBudget ?? Blocks[0].Block.Scope.MaxAmount;
+
+    /// <summary>
+    /// The user signs a root ticket and names the first agent as holder. <paramref name="treeBudget"/> caps
+    /// total spend across the tree; it defaults to the scope's per-action <see cref="Scope.MaxAmount"/>.
+    /// </summary>
+    public static DelegationChain Issue(ECDsa userKey, Scope scope, string intent, string firstAgentKey,
+                                        decimal? treeBudget = null)
     {
-        Block root = new(scope, intent, firstAgentKey, PrevHash: "");
+        Block root = new(scope, intent, firstAgentKey, PrevHash: "", treeBudget);
         return new([new SignedBlock(root, DelegationCrypto.Sign(userKey, root))]);
     }
 

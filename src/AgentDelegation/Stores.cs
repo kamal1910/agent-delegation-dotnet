@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 
 namespace AgentDelegation;
 
@@ -39,6 +40,30 @@ public interface IReceiptLedger
 
     /// <summary>Finds an earlier allowed receipt for the same tree and idempotency key.</summary>
     Task<SignedReceipt?> FindAllowedAsync(string rootId, string idempotencyKey, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Each agent's standing policy: what it may ever do, regardless of who delegates to it. The gateway checks
+/// every hop against it instead of trusting the delegator to have applied the intersection.
+/// </summary>
+public interface IAgentPolicyRegistry
+{
+    /// <summary>Looks up the policy registered for an agent's base64 public key.</summary>
+    bool TryGetPolicy(string agentKey, [NotNullWhen(true)] out Scope? policy);
+}
+
+/// <summary>Process-local policy registry for tests, demos and policies loaded from configuration.</summary>
+public sealed class InMemoryAgentPolicyRegistry(IEnumerable<KeyValuePair<string, Scope>>? policies = null)
+    : IAgentPolicyRegistry
+{
+    readonly ConcurrentDictionary<string, Scope> _policies = new(policies ?? [], StringComparer.Ordinal);
+
+    /// <summary>Registers or replaces an agent's policy.</summary>
+    public void Register(string agentKey, Scope policy) => _policies[agentKey] = policy;
+
+    /// <inheritdoc />
+    public bool TryGetPolicy(string agentKey, [NotNullWhen(true)] out Scope? policy) =>
+        _policies.TryGetValue(agentKey, out policy);
 }
 
 /// <summary>Process-local budget store for tests and single-instance demos.</summary>

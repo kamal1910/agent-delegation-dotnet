@@ -14,6 +14,12 @@ using ECDsa supportKey = DelegationCrypto.CreateKey();
 using ECDsa paymentsKey = DelegationCrypto.CreateKey();
 using ECDsa gatewayKey = DelegationCrypto.CreateKey();
 
+DateTimeOffset now = DateTimeOffset.UtcNow;
+
+// What each agent may ever do, regardless of who asks. The gateway checks every hop against these.
+Scope supportPolicy = new(["payments.refund"], [Scope.Any], 10_000m, 1, now.AddDays(30));
+Scope paymentsPolicy = new(["payments.refund"], [Scope.Any], 10_000m, 0, now.AddDays(30));
+
 // ---- Gateway in front of the payments tool ------------------------------------------------
 InMemoryReceiptLedger ledger = new();
 HashSet<string> refundsIssued = [];
@@ -25,6 +31,8 @@ builder.Services.AddSingleton<IReceiptLedger>(ledger);
 builder.Services.AddDelegationGateway(o =>
 {
     o.TrustedUserKeys["alice"] = DelegationCrypto.PublicKey(userKey);
+    o.AgentPolicies[DelegationCrypto.PublicKey(supportKey)] = supportPolicy;
+    o.AgentPolicies[DelegationCrypto.PublicKey(paymentsKey)] = paymentsPolicy;
     o.ReceiptSigningKey = gatewayKey;
 });
 
@@ -43,14 +51,10 @@ string gatewayUrl = app.Services.GetRequiredService<IServer>().Features.Get<ISer
     ?? throw new InvalidOperationException("Gateway did not report an address.");
 
 // ---- The user approves a narrow, short-lived ticket ---------------------------------------
-DateTimeOffset now = DateTimeOffset.UtcNow;
 DelegationChain root = DelegationChain.Issue(userKey,
     new Scope(["payments.refund"], ["C-881"], 1200m, MaxDepth: 1, now.AddHours(1)),
     intent: "Refund order #4471 to customer C-881, up to $1,200, within an hour",
     firstAgentKey: DelegationCrypto.PublicKey(supportKey));
-
-// What the payments agent may ever do, regardless of who asks.
-Scope paymentsPolicy = new(["payments.refund"], [Scope.Any], 10_000m, 0, now.AddDays(30));
 
 DelegationChain HandOff(string subtask) => root.Delegate(supportKey,
     requested: new Scope(["payments.refund"], ["C-881"], 1200m, 0, now.AddMinutes(10)),

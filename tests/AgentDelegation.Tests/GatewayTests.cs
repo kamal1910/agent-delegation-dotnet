@@ -24,7 +24,12 @@ public sealed class GatewayTests : IAsyncLifetime
                 .UseTestServer()
                 .ConfigureServices(services => services
                     .AddSingleton<TimeProvider>(new FixedTime(_s.Now))
-                    .AddDelegationGateway(o => o.TrustedUserKeys["alice"] = _s.UserPublicKey))
+                    .AddDelegationGateway(o =>
+                    {
+                        o.TrustedUserKeys["alice"] = _s.UserPublicKey;
+                        o.AgentPolicies[DelegationCrypto.PublicKey(_s.SupportKey)] = _s.SupportPolicy;
+                        o.AgentPolicies[DelegationCrypto.PublicKey(_s.PaymentsKey)] = _s.PaymentsPolicy;
+                    }))
                 .Configure(app =>
                 {
                     app.UseDelegationGateway();
@@ -87,6 +92,21 @@ public sealed class GatewayTests : IAsyncLifetime
         HttpResponseMessage res = await Client(_s.SupportKey).SendAsync(Refund(_s.ToPayments));
 
         Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        Assert.Equal(0, _toolCalls);
+    }
+
+    [Fact]
+    public async Task Blocks_an_agent_without_a_registered_policy()
+    {
+        using ECDsa stranger = DelegationCrypto.CreateKey();
+        DelegationChain toStranger = _s.Root.Delegate(_s.SupportKey,
+            new Scope(["payments.refund"], ["C-881"], 1200m, 0, _s.Now.AddMinutes(10)),
+            _s.PaymentsPolicy, "Refund", DelegationCrypto.PublicKey(stranger));
+
+        HttpResponseMessage res = await Client(stranger).SendAsync(Refund(toStranger));
+
+        Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        Assert.Equal("unknown agent at hop 1", await res.Content.ReadAsStringAsync());
         Assert.Equal(0, _toolCalls);
     }
 

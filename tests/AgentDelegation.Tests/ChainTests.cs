@@ -8,7 +8,7 @@ public sealed class ChainTests : IDisposable
 
     public void Dispose() => _s.Dispose();
 
-    VerifyResult Verify(DelegationChain chain) => ChainVerifier.Verify(chain, _s.UserPublicKey, _s.Now);
+    VerifyResult Verify(DelegationChain chain) => ChainVerifier.Verify(chain, _s.UserPublicKey, _s.Now, _s.Policies);
 
     [Fact]
     public void Delegation_narrows_to_the_intersection()
@@ -76,6 +76,32 @@ public sealed class ChainTests : IDisposable
         DelegationChain chain = new([.. _s.Root.Blocks, new SignedBlock(widened, DelegationCrypto.Sign(_s.SupportKey, widened))]);
 
         Assert.Equal("scope widened at hop 1", Verify(chain).Reason);
+    }
+
+    [Fact]
+    public void Tree_budget_can_only_be_set_on_the_root()
+    {
+        Block parent = _s.Root.Last;
+        Block topUp = new(parent.Scope with { MaxDepth = 0 }, "bigger budget",
+            DelegationCrypto.PublicKey(_s.PaymentsKey), DelegationCrypto.Hash(parent), TreeBudget: 99_999m);
+        DelegationChain chain = new([.. _s.Root.Blocks, new SignedBlock(topUp, DelegationCrypto.Sign(_s.SupportKey, topUp))]);
+
+        Assert.Equal("tree budget set below the root at hop 1", Verify(chain).Reason);
+    }
+
+    [Fact]
+    public void Negative_tree_budget_is_rejected()
+    {
+        DelegationChain chain = DelegationChain.Issue(_s.UserKey, _s.Root.Last.Scope, "refund",
+            DelegationCrypto.PublicKey(_s.SupportKey), treeBudget: -1m);
+
+        Assert.Equal("negative tree budget", Verify(chain).Reason);
+    }
+
+    [Fact]
+    public void Tree_budget_defaults_to_the_root_amount()
+    {
+        Assert.Equal(1200m, _s.ToPayments.TreeBudget);
     }
 
     [Fact]

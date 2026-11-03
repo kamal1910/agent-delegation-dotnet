@@ -27,6 +27,7 @@ public sealed record AuthorizationDecision(bool Allowed, string Reason, SignedRe
 public sealed class DelegationAuthorizer(
     IBudgetStore budgets,
     IReceiptLedger ledger,
+    IAgentPolicyRegistry policies,
     TimeProvider time,
     ECDsa? receiptKey = null)
 {
@@ -44,7 +45,7 @@ public sealed class DelegationAuthorizer(
             return await DecideAsync(request, "", Deny, "empty chain", ct);
 
         string rootId = chain.RootId;
-        VerifyResult result = ChainVerifier.Verify(chain, request.UserPublicKey, time.GetUtcNow());
+        VerifyResult result = ChainVerifier.Verify(chain, request.UserPublicKey, time.GetUtcNow(), policies);
         if (!result.Ok || result.Scope is null || result.HolderKey is null)
             return await DecideAsync(request, rootId, Deny, result.Reason, ct);
 
@@ -58,8 +59,7 @@ public sealed class DelegationAuthorizer(
             await ledger.FindAllowedAsync(rootId, key, ct) is { } earlier)
             return new(true, "replayed", earlier, Replayed: true);
 
-        decimal treeLimit = chain.Blocks[0].Block.Scope.MaxAmount;
-        if (!await budgets.TryConsumeAsync(rootId, treeLimit, request.Action.Amount, ct))
+        if (!await budgets.TryConsumeAsync(rootId, chain.TreeBudget, request.Action.Amount, ct))
             return await DecideAsync(request, rootId, Deny, "tree budget exhausted", ct);
 
         return await DecideAsync(request, rootId, Allow, "ok", ct);

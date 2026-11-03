@@ -45,6 +45,17 @@ public sealed record Scope(
         MaxDepth < parent.MaxDepth &&
         Expires <= parent.Expires;
 
+    /// <summary>
+    /// True when this scope stays inside an agent's standing <paramref name="policy"/>. Unlike
+    /// <see cref="IsWithin"/>, depth may equal the policy's: a policy is a ceiling, not a parent hop.
+    /// </summary>
+    public bool FitsPolicy(Scope policy) =>
+        Covers(policy.Actions, Actions) &&
+        Covers(policy.Recipients, Recipients) &&
+        MaxAmount <= policy.MaxAmount &&
+        MaxDepth <= policy.MaxDepth &&
+        Expires <= policy.Expires;
+
     /// <summary>True when a single tool action fits this scope.</summary>
     public bool Allows(ToolAction action, out string reason)
     {

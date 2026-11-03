@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <!-- In your own app, use the NuGet packages instead:
-       <PackageReference Include="AgentDelegation.AspNetCore" Version="0.1.1" /> -->
+       <PackageReference Include="AgentDelegation.AspNetCore" Version="0.2.0" /> -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\AgentDelegation\AgentDelegation.csproj" />
     <ProjectReference Include="..\..\src\AgentDelegation.AspNetCore\AgentDelegation.AspNetCore.csproj" />

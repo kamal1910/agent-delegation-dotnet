@@ -12,7 +12,9 @@ sealed class RefundScenario : IDisposable
     public ECDsa PaymentsKey { get; } = DelegationCrypto.CreateKey();
     public DelegationChain Root { get; }
     public DelegationChain ToPayments { get; }
+    public Scope SupportPolicy { get; }
     public Scope PaymentsPolicy { get; }
+    public InMemoryAgentPolicyRegistry Policies { get; } = new();
 
     public RefundScenario()
     {
@@ -21,7 +23,10 @@ sealed class RefundScenario : IDisposable
             intent: "Refund order #4471",
             firstAgentKey: DelegationCrypto.PublicKey(SupportKey));
 
+        SupportPolicy = new Scope(["payments.refund"], [Scope.Any], 10_000m, 1, Now.AddDays(30));
         PaymentsPolicy = new Scope(["payments.refund"], [Scope.Any], 10_000m, 0, Now.AddDays(30));
+        Policies.Register(DelegationCrypto.PublicKey(SupportKey), SupportPolicy);
+        Policies.Register(DelegationCrypto.PublicKey(PaymentsKey), PaymentsPolicy);
 
         ToPayments = Root.Delegate(SupportKey,
             requested: new Scope(["payments.refund"], ["C-881"], 1200m, 0, Now.AddMinutes(10)),

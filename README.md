@@ -52,10 +52,10 @@ Receipts written: 7 (1 allow, 6 deny), all signed: True
 ## The seven rules
 
 1. **A user-signed root ticket anchors every chain.** Every later block links back to it by hash.
-2. **Intersection authority.** At each hop: `parent ∩ requested ∩ delegatee's own policy`. A delegatee can never add its own powers, which removes the confused-deputy attack.
+2. **Intersection authority.** At each hop: `parent ∩ requested ∩ delegatee's own policy`. A delegatee can never add its own powers, which removes the confused-deputy attack. The gateway checks every hop against each agent's registered policy, so it doesn't rely on the delegator having applied the intersection.
 3. **Offline narrowing.** Each holder signs the next block with its own key. Widening fails verification.
 4. **Proof of possession.** The final holder signs each request body; a stolen chain is useless without its key.
-5. **Tree-wide budgets.** Spend is tracked per root ticket and shared by every branch.
+5. **Tree-wide budgets.** Spend is tracked per root ticket and shared by every branch. The total is set on the root, separately from the per-action limit.
 6. **Short lifetimes instead of revocation.** Blocks expire in minutes; stop renewing the root and the tree stops.
 7. **Results are untrusted.** Tool and sub-agent output is wrapped before the model reads it.
 
@@ -74,7 +74,8 @@ DateTimeOffset now = DateTimeOffset.UtcNow;
 DelegationChain chain = DelegationChain.Issue(userKey,
     new Scope(["payments.refund"], ["C-881"], 1200m, MaxDepth: 1, now.AddHours(1)),
     intent: "Refund order #4471",
-    firstAgentKey: DelegationCrypto.PublicKey(supportAgentKey));
+    firstAgentKey: DelegationCrypto.PublicKey(supportAgentKey),
+    treeBudget: 1200m);   // total across every branch; defaults to the scope's MaxAmount
 
 // What the payments agent may ever do, regardless of who asks.
 Scope paymentsPolicy = new(["payments.refund"], [Scope.Any], 10_000m, 0, now.AddDays(30));
@@ -114,8 +115,11 @@ using AgentDelegation.AspNetCore;
 builder.Services.AddDelegationGateway(o =>
 {
     o.TrustedUserKeys["alice"] = alicePublicKey;   // user id -> base64 public key
+    o.AgentPolicies[supportAgentPublicKey] = supportPolicy;    // every agent that can hold a chain
+    o.AgentPolicies[paymentsAgentPublicKey] = paymentsPolicy;
     o.ReceiptSigningKey = gatewayKey;              // optional
 });
+// Or register your own IAgentPolicyRegistry (e.g. backed by a database) instead of AgentPolicies.
 builder.Services.AddSingleton<IBudgetStore, RedisBudgetStore>();     // your shared, atomic store
 builder.Services.AddSingleton<IReceiptLedger, SqlReceiptLedger>();   // your append-only ledger
 builder.Services.AddReverseProxy().LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
@@ -152,6 +156,9 @@ Wrapping is a hint to the model, not a security boundary. The gateway is what re
 | Anyone edits an earlier block | `bad signature at hop N` |
 | Another agent replays the stolen chain | `caller is not the chain holder` |
 | Two branches each try $1,200 | Second gets `tree budget exhausted` |
+| Delegator skips the intersection with the delegatee's policy | `exceeds holder policy at hop N` |
+| Chain handed to an agent with no registered policy | `unknown agent at hop N` |
+| Hand-built block raises the tree budget | `tree budget set below the root at hop N` |
 | Retry with the same `Idempotency-Key` | Allowed once, not charged twice |
 
 Each row is covered by a test in `tests/AgentDelegation.Tests`.
