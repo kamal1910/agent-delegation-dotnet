@@ -227,6 +227,7 @@ Wrapping is a hint to the model, not a security boundary. The gateway is what re
 | Delegator skips the intersection with the delegatee's policy | `exceeds holder policy at hop N` |
 | Chain handed to an agent with no registered policy | `unknown agent at hop N` |
 | Hand-built block raises the tree budget | `tree budget set below the root at hop N` |
+| Root ticket uses the `*` wildcard for actions or recipients | `wildcard in root ticket` |
 | Retry with the same `Idempotency-Key` | First response returned, tool not called, not charged twice |
 | Same `Idempotency-Key` with a different action | `idempotency key reused for a different action` |
 | Captured request sent again | `replayed request` |

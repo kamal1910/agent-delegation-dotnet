@@ -13,8 +13,8 @@ abstract: >-
 authors:
   - family-names: Ayyau
     given-names: Kamalakannan
-version: 0.4.0
-date-released: 2026-11-02
+version: 0.4.1
+date-released: 2026-11-03
 license: MIT
 repository-code: "https://github.com/kamal1910/agent-delegation-dotnet"
 url: "https://www.nuget.org/packages/AgentDelegation"

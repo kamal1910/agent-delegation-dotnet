@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-03
+
+### Security
+- The verifier rejects a root ticket whose actions or recipients contain the `*` wildcard
+  (`wildcard in root ticket`). Users approve named actions and recipients; the wildcard is only for an agent's
+  standing policy. Since a block can never widen its parent, no block in an accepted chain can contain it.
+
 ## [0.4.0] - 2026-11-02
 
 ### Added
@@ -81,7 +88,8 @@ All notable changes to this project are documented here. The format follows
 - `AgentDelegation.AspNetCore`: gateway middleware for tool APIs or YARP.
 - `AgentDelegation.SemanticKernel`: function filter that marks tool and sub-agent results as untrusted.
 
-[Unreleased]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.1.1...v0.2.0

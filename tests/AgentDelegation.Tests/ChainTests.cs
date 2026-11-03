@@ -78,6 +78,32 @@ public sealed class ChainTests : IDisposable
         Assert.Equal("scope widened at hop 1", Verify(chain).Reason);
     }
 
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void Wildcard_in_the_root_ticket_is_rejected(bool anyAction, bool anyRecipient)
+    {
+        Scope scope = new(anyAction ? [Scope.Any] : ["payments.refund"], anyRecipient ? [Scope.Any] : ["C-881"],
+            1200m, MaxDepth: 1, _s.Now.AddHours(1));
+        DelegationChain chain = DelegationChain.Issue(_s.UserKey, scope, "refund anyone",
+            DelegationCrypto.PublicKey(_s.SupportKey));
+
+        Assert.Equal("wildcard in root ticket", Verify(chain).Reason);
+    }
+
+    [Fact]
+    public void Wildcard_root_is_rejected_even_when_delegated_down_to_named_values()
+    {
+        DelegationChain root = DelegationChain.Issue(_s.UserKey,
+            new Scope(["payments.refund"], [Scope.Any], 1200m, MaxDepth: 1, _s.Now.AddHours(1)),
+            "refund anyone", DelegationCrypto.PublicKey(_s.SupportKey));
+        DelegationChain chain = root.Delegate(_s.SupportKey,
+            new Scope(["payments.refund"], ["C-881"], 1200m, 0, _s.Now.AddMinutes(10)),
+            _s.PaymentsPolicy, "refund", DelegationCrypto.PublicKey(_s.PaymentsKey));
+
+        Assert.Equal("wildcard in root ticket", Verify(chain).Reason);
+    }
+
     [Fact]
     public void Tree_budget_can_only_be_set_on_the_root()
     {

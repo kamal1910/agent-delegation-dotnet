@@ -38,6 +38,10 @@ public static class ChainVerifier
             {
                 if (block.PrevHash != "") return new(false, "root has a parent link");
                 if (block.TreeBudget < 0) return new(false, "negative tree budget");
+                // A user approves named actions and recipients. With no wildcard at the root, IsWithin keeps one
+                // from appearing anywhere below it.
+                if (block.Scope.Actions.Contains(Scope.Any) || block.Scope.Recipients.Contains(Scope.Any))
+                    return new(false, "wildcard in root ticket");
             }
             else
             {
