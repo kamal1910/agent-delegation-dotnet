@@ -14,6 +14,12 @@ using ECDsa supportKey = DelegationCrypto.CreateKey();
 using ECDsa paymentsKey = DelegationCrypto.CreateKey();
 using ECDsa gatewayKey = DelegationCrypto.CreateKey();
 
+// Everything signs through IDelegationSigner. In production, swap EcdsaSigner for a Key Vault or HSM signer
+// (see the README) and the private keys never enter this process.
+IDelegationSigner userSigner = new EcdsaSigner(userKey);
+IDelegationSigner supportSigner = new EcdsaSigner(supportKey);
+IDelegationSigner paymentsSigner = new EcdsaSigner(paymentsKey);
+
 DateTimeOffset now = DateTimeOffset.UtcNow;
 
 // What each agent may ever do, regardless of who asks. The gateway checks every hop against these.
@@ -49,40 +55,43 @@ string gatewayUrl = app.Services.GetRequiredService<IServer>().Features.Get<ISer
     ?? throw new InvalidOperationException("Gateway did not report an address.");
 
 // ---- The user approves a narrow, short-lived ticket ---------------------------------------
-DelegationChain root = DelegationChain.Issue(userKey,
+DelegationChain root = await DelegationChain.IssueAsync(userSigner,
     new Scope(["payments.refund"], ["C-881"], 1200m, MaxDepth: 1, now.AddHours(1)),
     intent: "Refund order #4471 to customer C-881, up to $1,200, within an hour",
-    firstAgentKey: DelegationCrypto.PublicKey(supportKey));
+    firstAgentKey: supportSigner.PublicKey);
 
-DelegationChain HandOff(string subtask) => root.Delegate(supportKey,
+Task<DelegationChain> HandOff(string subtask) => root.DelegateAsync(supportSigner,
     requested: new Scope(["payments.refund"], ["C-881"], 1200m, 0, now.AddMinutes(10)),
     delegateeOwn: paymentsPolicy,
     subtask: subtask,
-    delegateeKey: DelegationCrypto.PublicKey(paymentsKey));
+    delegateeKey: paymentsSigner.PublicKey);
 
-DelegationChain toPayments = HandOff("Issue refund for #4471");
+DelegationChain toPayments = await HandOff("Issue refund for #4471");
 
 // ---- Agents call the tool through the gateway ---------------------------------------------
 // The recorder plays an attacker on the network who copies every request the payments agent sends.
 Recorder wire = new() { InnerHandler = new HttpClientHandler() };
 
-HttpClient AgentClient(ECDsa agentKey, HttpMessageHandler inner) =>
-    new(new DelegationHandler(agentKey, "alice") { InnerHandler = inner })
+// One client per agent, shared by every user it acts for: the user is set on each request.
+HttpClient AgentClient(IDelegationSigner agent, HttpMessageHandler inner) =>
+    new(new DelegationHandler(agent) { InnerHandler = inner })
     {
         BaseAddress = new Uri(gatewayUrl),
     };
 
-using HttpClient payments = AgentClient(paymentsKey, wire);
-using HttpClient support = AgentClient(supportKey, new HttpClientHandler());
+using HttpClient payments = AgentClient(paymentsSigner, wire);
+using HttpClient support = AgentClient(supportSigner, new HttpClientHandler());
 using HttpClient attacker = new() { BaseAddress = new Uri(gatewayUrl) };
 
-async Task<string> Refund(HttpClient client, DelegationChain chain, string recipient, decimal amount, string? idempotencyKey = null)
+async Task<string> Refund(HttpClient client, DelegationChain chain, string recipient, decimal amount,
+                          string? idempotencyKey = null, string user = "alice")
 {
     using HttpRequestMessage req = new(HttpMethod.Post, "/refunds")
     {
         Content = JsonContent.Create(new ToolAction("payments.refund", recipient, amount)),
     };
     req.Options.Set(DelegationHandler.ChainKey, chain);
+    req.Options.Set(DelegationHandler.UserIdKey, user);
     if (idempotencyKey is not null) req.Headers.Add(DelegationHeaders.IdempotencyKey, idempotencyKey);
 
     return Describe(await client.SendAsync(req));
@@ -120,6 +129,7 @@ Row("Attacker resends a captured request", Describe(await attacker.SendAsync(res
 Row("Injected: refund to account X-999", await Refund(payments, toPayments, "X-999", 1200m));
 Row("Injected: refund $5,000", await Refund(payments, toPayments, "C-881", 5000m));
 Row("Support agent replays the payments chain", await Refund(support, toPayments, "C-881", 10m));
+Row("Chain sent on behalf of an unknown user", await Refund(payments, toPayments, "C-881", 10m, user: "mallory"));
 
 try
 {
@@ -143,7 +153,7 @@ DelegationChain edited = new([new SignedBlock(SignedBlock.EncodePayload(biggerRo
                               .. toPayments.Blocks.Skip(1)]);
 Row("Someone edits the root amount", await Refund(payments, edited, "C-881", 10m));
 
-Row("Second branch tries another $1,200", await Refund(payments, HandOff("Duplicate refund"), "C-881", 1200m));
+Row("Second branch tries another $1,200", await Refund(payments, await HandOff("Duplicate refund"), "C-881", 1200m));
 
 Console.WriteLine();
 Console.WriteLine("Tool output as the model would see it:");

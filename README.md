@@ -26,7 +26,9 @@ Targets .NET 8 and .NET 9.
 ## Try the working model
 
 [`samples/RefundDemo`](https://github.com/kamal1910/agent-delegation-dotnet/tree/main/samples/RefundDemo) runs a user,
-a support agent, a payments agent, the gateway and a fake payments tool in one process, then fires every attack at it:
+a support agent, a payments agent, the gateway and a fake payments tool in one process, then fires every attack at it.
+Every key signs through `IDelegationSigner`, and each agent uses one HTTP client for all users, so it doubles as a
+template for a real service:
 
 ```bash
 git clone https://github.com/kamal1910/agent-delegation-dotnet
@@ -42,6 +44,7 @@ dotnet run --project samples/RefundDemo
   Injected: refund to account X-999                DENIED   403 recipient not allowed
   Injected: refund $5,000                          DENIED   403 amount over limit
   Support agent replays the payments chain         DENIED   403 caller is not the chain holder
+  Chain sent on behalf of an unknown user          DENIED   401 unknown user
   Payments agent delegates further                 DENIED   Delegation depth exhausted.
   Payments agent appends a wider block             DENIED   403 scope widened at hop 2
   Someone edits the root amount                    DENIED   403 bad signature at hop 0
@@ -219,6 +222,7 @@ Wrapping is a hint to the model, not a security boundary. The gateway is what re
 | Hand-built block adding `payments.transfer` | `scope widened at hop N` |
 | Anyone edits an earlier block | `bad signature at hop N` |
 | Another agent replays the stolen chain | `caller is not the chain holder` |
+| Request for a user the gateway doesn't trust | `401 unknown user` |
 | Two branches each try $1,200 | Second gets `tree budget exhausted` |
 | Delegator skips the intersection with the delegatee's policy | `exceeds holder policy at hop N` |
 | Chain handed to an agent with no registered policy | `unknown agent at hop N` |
