@@ -27,18 +27,25 @@ public static class DelegationCrypto
     public static string Hash<T>(T value) => Convert.ToHexString(SHA256.HashData(Canonical(value))).ToLowerInvariant();
 
     /// <summary>Signs the canonical bytes and returns a base64 signature.</summary>
-    public static string Sign<T>(ECDsa key, T value) =>
-        Convert.ToBase64String(key.SignData(Canonical(value), HashAlgorithmName.SHA256));
+    public static string Sign<T>(ECDsa key, T value) => SignBytes(key, Canonical(value));
+
+    /// <summary>Signs raw bytes and returns a base64 signature.</summary>
+    public static string SignBytes(ECDsa key, byte[] data) =>
+        Convert.ToBase64String(key.SignData(data, HashAlgorithmName.SHA256));
 
     /// <summary>Verifies a base64 signature against a base64 public key. Malformed input returns false.</summary>
-    public static bool Verify<T>(string publicKey, T value, string signature)
+    public static bool Verify<T>(string publicKey, T value, string signature) =>
+        VerifyBytes(publicKey, Canonical(value), signature);
+
+    /// <summary>Verifies a base64 signature over raw bytes. Malformed input returns false.</summary>
+    public static bool VerifyBytes(string publicKey, byte[] data, string signature)
     {
         if (string.IsNullOrEmpty(publicKey) || string.IsNullOrEmpty(signature)) return false;
         try
         {
             using ECDsa key = ECDsa.Create();
             key.ImportSubjectPublicKeyInfo(Convert.FromBase64String(publicKey), out _);
-            return key.VerifyData(Canonical(value), Convert.FromBase64String(signature), HashAlgorithmName.SHA256);
+            return key.VerifyData(data, Convert.FromBase64String(signature), HashAlgorithmName.SHA256);
         }
         catch (Exception e) when (e is FormatException or CryptographicException)
         {

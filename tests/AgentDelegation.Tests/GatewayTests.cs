@@ -49,8 +49,11 @@ public sealed class GatewayTests : IAsyncLifetime
         _s.Dispose();
     }
 
-    HttpClient Client(ECDsa agentKey, string user = "alice") =>
-        new(new DelegationHandler(agentKey, user) { InnerHandler = _host.GetTestServer().CreateHandler() })
+    HttpClient Client(ECDsa agentKey, string user = "alice", HttpMessageHandler? inner = null) =>
+        new(new DelegationHandler(agentKey, user, new FixedTime(_s.Now))
+        {
+            InnerHandler = inner ?? _host.GetTestServer().CreateHandler(),
+        })
         {
             BaseAddress = new Uri("http://gateway/"),
         };
@@ -123,5 +126,56 @@ public sealed class GatewayTests : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, unknown.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
         Assert.Equal(0, _toolCalls);
+    }
+
+    [Fact]
+    public async Task Retries_get_the_first_response_without_calling_the_tool_again()
+    {
+        HttpClient client = Client(_s.PaymentsKey);
+        HttpRequestMessage first = Refund(_s.ToPayments);
+        first.Headers.Add(DelegationHeaders.IdempotencyKey, "wf-1:refund");
+        HttpRequestMessage retry = Refund(_s.ToPayments);
+        retry.Headers.Add(DelegationHeaders.IdempotencyKey, "wf-1:refund");
+
+        HttpResponseMessage a = await client.SendAsync(first);
+        HttpResponseMessage b = await client.SendAsync(retry);
+
+        Assert.Equal(HttpStatusCode.OK, b.StatusCode);
+        Assert.Equal("refunded", await b.Content.ReadAsStringAsync());
+        Assert.True(b.Headers.Contains(DelegationGatewayMiddleware.ReplayedHeader));
+        Assert.False(a.Headers.Contains(DelegationGatewayMiddleware.ReplayedHeader));
+        Assert.Equal(1, _toolCalls);
+    }
+
+    [Fact]
+    public async Task A_captured_request_sent_again_is_rejected()
+    {
+        Recorder recorder = new() { InnerHandler = _host.GetTestServer().CreateHandler() };
+        await Client(_s.PaymentsKey, inner: recorder).SendAsync(Refund(_s.ToPayments, amount: 10m));
+
+        HttpRequestMessage replay = new(HttpMethod.Post, "http://gateway/refunds")
+        {
+            Content = new ByteArrayContent(recorder.Body) { Headers = { ContentType = new("application/json") } },
+        };
+        foreach ((string name, IEnumerable<string> values) in recorder.Headers)
+            replay.Headers.TryAddWithoutValidation(name, values);
+        HttpResponseMessage res = await _host.GetTestClient().SendAsync(replay);
+
+        Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
+        Assert.Equal("replayed request", await res.Content.ReadAsStringAsync());
+        Assert.Equal(1, _toolCalls);
+    }
+
+    sealed class Recorder : DelegatingHandler
+    {
+        public List<(string, IEnumerable<string>)> Headers { get; } = [];
+        public byte[] Body { get; private set; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Headers.AddRange(request.Headers.Select(h => (h.Key, h.Value)));
+            Body = request.Content is null ? [] : await request.Content.ReadAsByteArrayAsync(ct);
+            return await base.SendAsync(request, ct);
+        }
     }
 }

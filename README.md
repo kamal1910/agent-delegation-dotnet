@@ -36,7 +36,9 @@ dotnet run --project samples/RefundDemo
 
 ```text
   Refund $1,200 to C-881                           ALLOWED  refunded $1,200.00 to C-881
-  Retry with the same Idempotency-Key              ALLOWED  refunded $1,200.00 to C-881
+  Retry with the same Idempotency-Key              ALLOWED  refunded $1,200.00 to C-881 (cached, tool not called)
+  Same Idempotency-Key, different amount           DENIED   403 idempotency key reused for a different action
+  Attacker resends a captured request              DENIED   403 replayed request
   Injected: refund to account X-999                DENIED   403 recipient not allowed
   Injected: refund $5,000                          DENIED   403 amount over limit
   Support agent replays the payments chain         DENIED   403 caller is not the chain holder
@@ -46,7 +48,7 @@ dotnet run --project samples/RefundDemo
   Second branch tries another $1,200               DENIED   403 tree budget exhausted
 
 Refunds actually issued: 1
-Receipts written: 7 (1 allow, 6 deny), all signed: True
+Receipts written: 9 (1 allow, 8 deny), all signed: True
 ```
 
 ## The seven rules
@@ -54,7 +56,7 @@ Receipts written: 7 (1 allow, 6 deny), all signed: True
 1. **A user-signed root ticket anchors every chain.** Every later block links back to it by hash.
 2. **Intersection authority.** At each hop: `parent ∩ requested ∩ delegatee's own policy`. A delegatee can never add its own powers, which removes the confused-deputy attack. The gateway checks every hop against each agent's registered policy, so it doesn't rely on the delegator having applied the intersection.
 3. **Offline narrowing.** Each holder signs the next block with its own key. Widening fails verification.
-4. **Proof of possession.** The final holder signs each request body; a stolen chain is useless without its key.
+4. **Proof of possession.** The final holder signs each request: method, path, time, a one-time nonce, the idempotency key and the body. A stolen chain is useless without its key, and a captured request can't be resent, delayed or pointed at another route.
 5. **Tree-wide budgets.** Spend is tracked per root ticket and shared by every branch. The total is set on the root, separately from the per-action limit.
 6. **Short lifetimes instead of revocation.** Blocks expire in minutes; stop renewing the root and the tree stops.
 7. **Results are untrusted.** Tool and sub-agent output is wrapped before the model reads it.
@@ -105,7 +107,8 @@ req.Headers.Add(DelegationHeaders.IdempotencyKey, $"{workflowId}:refund");
 await http.SendAsync(req);
 ```
 
-The handler adds `X-User`, `X-Delegation` (the chain) and `X-Agent-Proof` (the holder's signature over the body).
+The handler adds `X-User`, `X-Delegation` (the chain), `X-Agent-Timestamp`, `X-Agent-Nonce` and `X-Agent-Proof`
+(the holder's signature over the request). Each send, including a retry, gets a fresh timestamp and nonce.
 
 ### Gateway (ASP.NET Core + YARP)
 
@@ -118,10 +121,13 @@ builder.Services.AddDelegationGateway(o =>
     o.AgentPolicies[supportAgentPublicKey] = supportPolicy;    // every agent that can hold a chain
     o.AgentPolicies[paymentsAgentPublicKey] = paymentsPolicy;
     o.ReceiptSigningKey = gatewayKey;              // optional
+    o.MaxClockSkew = TimeSpan.FromMinutes(2);      // how old or early a signed request may be
 });
 // Or register your own IAgentPolicyRegistry (e.g. backed by a database) instead of AgentPolicies.
 builder.Services.AddSingleton<IBudgetStore, RedisBudgetStore>();     // your shared, atomic store
 builder.Services.AddSingleton<IReceiptLedger, SqlReceiptLedger>();   // your append-only ledger
+builder.Services.AddSingleton<INonceStore, RedisNonceStore>();       // used request nonces (SET NX with expiry)
+builder.Services.AddSingleton<IIdempotentResponseCache, RedisResponseCache>(); // first responses for retries
 builder.Services.AddReverseProxy().LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 var app = builder.Build();
@@ -131,8 +137,13 @@ app.Run();
 ```
 
 Requests are expected to carry a JSON `ToolAction` body (`action`, `recipient`, `amount`). The gateway returns
-`401` for unknown users, `400` for malformed chains or bodies, and `403` with a reason for every denied call.
-In-memory stores are registered by default; replace them when you run more than one gateway instance.
+`401` for unknown users, `400` for malformed chains, timestamps or bodies, and `403` with a reason for every denied call.
+A retry with the same `Idempotency-Key` gets the first response back with an `Idempotent-Replayed: true` header,
+without reaching the tool. In-memory stores are registered by default; replace them when you run more than one
+gateway instance.
+
+The agent signs the path it sent. If something in front of the gateway rewrites paths, the signature won't match,
+so put the gateway at the edge or keep paths unchanged up to it.
 
 ### Semantic Kernel
 
@@ -159,9 +170,24 @@ Wrapping is a hint to the model, not a security boundary. The gateway is what re
 | Delegator skips the intersection with the delegatee's policy | `exceeds holder policy at hop N` |
 | Chain handed to an agent with no registered policy | `unknown agent at hop N` |
 | Hand-built block raises the tree budget | `tree budget set below the root at hop N` |
-| Retry with the same `Idempotency-Key` | Allowed once, not charged twice |
+| Retry with the same `Idempotency-Key` | First response returned, tool not called, not charged twice |
+| Same `Idempotency-Key` with a different action | `idempotency key reused for a different action` |
+| Captured request sent again | `replayed request` |
+| Request signed more than 2 minutes ago (or ahead) | `stale request` |
+| Signature reused for another route or body | `caller is not the chain holder` |
 
 Each row is covered by a test in `tests/AgentDelegation.Tests`.
+
+## Wire format
+
+Signatures cover exact bytes, never a re-serialization, so other languages can produce and check chains:
+
+- **Block:** each `SignedBlock` carries `payload` (base64 of the block's JSON bytes, exactly as signed) and
+  `signature` (ECDSA P-256 / SHA-256, IEEE P1363, base64). A block's hash is the lower-case hex SHA-256 of its
+  payload bytes; the next block's `prevHash` and the tree's root id use that hash.
+- **Request:** the holder signs the UTF-8 bytes of these lines joined with `\n`:
+  `agent-delegation-request-v1`, the upper-case method, the path and query as sent, the Unix timestamp in seconds,
+  the nonce, the `Idempotency-Key` (or empty), and the lower-case hex SHA-256 of the body.
 
 ## Durable orchestration with Dapr Workflow
 
@@ -179,7 +205,8 @@ This is a reference implementation of the design, not an audited token format. F
 
 - Keep private keys in an HSM or Azure Key Vault.
 - Implement `IBudgetStore` with an atomic decrement (Redis script, conditional SQL update).
-- Proof of possession signs the body only; pair it with idempotency keys and short block lifetimes to limit replay.
+- Back `INonceStore` and `IIdempotentResponseCache` with a shared store so replay protection holds across gateway instances.
+- Keep gateway clocks in sync (NTP); requests outside `MaxClockSkew` are refused.
 - Consider an audited attenuable token format such as [Biscuit](https://www.biscuitsec.org/), and get a security review.
 
 ## Build

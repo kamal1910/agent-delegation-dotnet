@@ -23,13 +23,15 @@ public static class ChainVerifier
 
         for (int i = 0; i < chain.Blocks.Count; i++)
         {
-            (Block? block, string? sig) = (chain.Blocks[i].Block, chain.Blocks[i].Signature);
-            if (block?.Scope?.Actions is null || block.Scope.Recipients is null || block.HolderKey is null)
+            SignedBlock signed = chain.Blocks[i];
+            Block block = signed.Block;
+            if (block.Scope?.Actions is null || block.Scope.Recipients is null || block.HolderKey is null || block.PrevHash is null)
                 return new(false, $"malformed block at hop {i}");
 
             string signer = i == 0 ? userPublicKey : chain.Blocks[i - 1].Block.HolderKey;
 
-            if (!DelegationCrypto.Verify(signer, block, sig ?? "")) return new(false, $"bad signature at hop {i}");
+            if (!DelegationCrypto.VerifyBytes(signer, signed.PayloadBytes, signed.Signature))
+                return new(false, $"bad signature at hop {i}");
             if (block.Scope.Expires <= now) return new(false, $"expired at hop {i}");
 
             if (i == 0)
@@ -40,7 +42,7 @@ public static class ChainVerifier
             else
             {
                 Block parent = chain.Blocks[i - 1].Block;
-                if (block.PrevHash != DelegationCrypto.Hash(parent)) return new(false, $"broken link at hop {i}");
+                if (block.PrevHash != chain.Blocks[i - 1].Hash) return new(false, $"broken link at hop {i}");
                 if (!block.Scope.IsWithin(parent.Scope)) return new(false, $"scope widened at hop {i}");
                 if (block.TreeBudget is not null) return new(false, $"tree budget set below the root at hop {i}");
             }

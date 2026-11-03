@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace AgentDelegation;
 
@@ -7,15 +8,60 @@ namespace AgentDelegation;
 /// <param name="Scope">What the holder may do.</param>
 /// <param name="Task">The task or subtask, in plain language.</param>
 /// <param name="HolderKey">Base64 public key of the agent that holds this block and may sign the next one.</param>
-/// <param name="PrevHash">Hash of the previous block; empty for the root.</param>
+/// <param name="PrevHash">The previous block's <see cref="SignedBlock.Hash"/>; empty for the root.</param>
 /// <param name="TreeBudget">
 /// Total spend shared by the whole delegation tree. Only the root may set it; when unset the root's
 /// <see cref="Scope.MaxAmount"/> is used.
 /// </param>
 public sealed record Block(Scope Scope, string Task, string HolderKey, string PrevHash, decimal? TreeBudget = null);
 
-/// <summary>A block plus the signature of whoever held the previous block (the user, for the root).</summary>
-public sealed record SignedBlock(Block Block, string Signature);
+/// <summary>
+/// A block as the exact bytes that were signed, plus the signature of whoever held the previous block
+/// (the user, for the root). Verification and hashing use <see cref="Payload"/> as-is and never re-serialize,
+/// so a chain verifies the same in any language or serializer version.
+/// </summary>
+public sealed class SignedBlock
+{
+    /// <summary>Wraps an encoded block and its signature. Throws when the payload is not a valid block.</summary>
+    /// <param name="payload">Base64 of the block's JSON bytes.</param>
+    /// <param name="signature">Base64 signature over the decoded payload bytes.</param>
+    [JsonConstructor]
+    public SignedBlock(string payload, string signature)
+    {
+        Payload = payload ?? throw new ArgumentNullException(nameof(payload));
+        Signature = signature ?? throw new ArgumentNullException(nameof(signature));
+        PayloadBytes = Convert.FromBase64String(payload);
+        Block = JsonSerializer.Deserialize<Block>(PayloadBytes, DelegationCrypto.Json)
+                ?? throw new JsonException("Block payload is empty.");
+    }
+
+    /// <summary>Base64 of the block's JSON bytes, exactly as signed.</summary>
+    public string Payload { get; }
+
+    /// <summary>Base64 signature over the payload bytes.</summary>
+    public string Signature { get; }
+
+    /// <summary>The decoded block.</summary>
+    [JsonIgnore]
+    public Block Block { get; }
+
+    /// <summary>Lower-case hex SHA-256 of the payload bytes. The next block's <see cref="Block.PrevHash"/>.</summary>
+    [JsonIgnore]
+    public string Hash => Convert.ToHexString(SHA256.HashData(PayloadBytes)).ToLowerInvariant();
+
+    internal byte[] PayloadBytes { get; }
+
+    /// <summary>Serializes <paramref name="block"/> once and signs those bytes.</summary>
+    public static SignedBlock Sign(ECDsa key, Block block)
+    {
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(block, DelegationCrypto.Json);
+        return new(Convert.ToBase64String(bytes), DelegationCrypto.SignBytes(key, bytes));
+    }
+
+    /// <summary>Encodes a block as a payload without signing it, for building or inspecting blocks by hand.</summary>
+    public static string EncodePayload(Block block) =>
+        Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(block, DelegationCrypto.Json));
+}
 
 /// <summary>
 /// A user-signed root ticket followed by signed hand-offs. Each hand-off can only narrow authority.
@@ -23,13 +69,16 @@ public sealed record SignedBlock(Block Block, string Signature);
 public sealed record DelegationChain(IReadOnlyList<SignedBlock> Blocks)
 {
     /// <summary>Identifies the whole delegation tree; budgets and receipts are keyed on it.</summary>
-    public string RootId => DelegationCrypto.Hash(Blocks[0].Block);
+    public string RootId => Blocks[0].Hash;
 
     /// <summary>The block that currently holds authority.</summary>
     public Block Last => Blocks[^1].Block;
 
     /// <summary>Total spend allowed across every branch of this tree.</summary>
     public decimal TreeBudget => Blocks[0].Block.TreeBudget ?? Blocks[0].Block.Scope.MaxAmount;
+
+    /// <summary>Hash of every payload and signature in order; identifies this exact chain in receipts.</summary>
+    public string ChainHash => DelegationCrypto.Hash(string.Join('\n', Blocks.Select(b => $"{b.Payload}.{b.Signature}")));
 
     /// <summary>
     /// The user signs a root ticket and names the first agent as holder. <paramref name="treeBudget"/> caps
@@ -39,7 +88,7 @@ public sealed record DelegationChain(IReadOnlyList<SignedBlock> Blocks)
                                         decimal? treeBudget = null)
     {
         Block root = new(scope, intent, firstAgentKey, PrevHash: "", treeBudget);
-        return new([new SignedBlock(root, DelegationCrypto.Sign(userKey, root))]);
+        return new([SignedBlock.Sign(userKey, root)]);
     }
 
     /// <summary>
@@ -52,17 +101,17 @@ public sealed record DelegationChain(IReadOnlyList<SignedBlock> Blocks)
     public DelegationChain Delegate(ECDsa holderKey, Scope requested, Scope delegateeOwn,
                                     string subtask, string delegateeKey)
     {
-        Block parent = Last;
-        if (DelegationCrypto.PublicKey(holderKey) != parent.HolderKey)
+        SignedBlock parent = Blocks[^1];
+        if (DelegationCrypto.PublicKey(holderKey) != parent.Block.HolderKey)
             throw new InvalidOperationException("Only the current holder can delegate.");
-        if (parent.Scope.MaxDepth <= 0)
+        if (parent.Block.Scope.MaxDepth <= 0)
             throw new InvalidOperationException("Delegation depth exhausted.");
 
-        Scope scope = parent.Scope.Intersect(requested).Intersect(delegateeOwn)
-            with { MaxDepth = Math.Min(Math.Min(requested.MaxDepth, delegateeOwn.MaxDepth), parent.Scope.MaxDepth - 1) };
+        Scope scope = parent.Block.Scope.Intersect(requested).Intersect(delegateeOwn)
+            with { MaxDepth = Math.Min(Math.Min(requested.MaxDepth, delegateeOwn.MaxDepth), parent.Block.Scope.MaxDepth - 1) };
 
-        Block block = new(scope, subtask, delegateeKey, DelegationCrypto.Hash(parent));
-        return new([.. Blocks, new SignedBlock(block, DelegationCrypto.Sign(holderKey, block))]);
+        Block block = new(scope, subtask, delegateeKey, parent.Hash);
+        return new([.. Blocks, SignedBlock.Sign(holderKey, block)]);
     }
 
     /// <summary>Encodes the chain for an HTTP header.</summary>
@@ -77,11 +126,11 @@ public sealed record DelegationChain(IReadOnlyList<SignedBlock> Blocks)
         {
             DelegationChain? decoded = JsonSerializer.Deserialize<DelegationChain>(
                 Convert.FromBase64String(encoded), DelegationCrypto.Json);
-            if (decoded?.Blocks is null) return false;
+            if (decoded?.Blocks is null || decoded.Blocks.Any(b => b is null)) return false;
             chain = decoded;
             return true;
         }
-        catch (Exception e) when (e is FormatException or JsonException)
+        catch (Exception e) when (e is FormatException or JsonException or ArgumentException)
         {
             return false;
         }

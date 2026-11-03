@@ -20,13 +20,19 @@ public sealed class DelegationGatewayOptions
 
     /// <summary>Optional gateway key used to sign receipts. Keep it in an HSM or Key Vault in production.</summary>
     public ECDsa? ReceiptSigningKey { get; set; }
+
+    /// <summary>How far a request's signed timestamp may be from the gateway's clock. Defaults to 2 minutes.</summary>
+    public TimeSpan MaxClockSkew { get; set; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>How long a response is kept for retries with the same <c>Idempotency-Key</c>. Defaults to 24 hours.</summary>
+    public TimeSpan IdempotentResponseLifetime { get; set; } = TimeSpan.FromHours(24);
 }
 
 /// <summary>Registration helpers.</summary>
 public static class DelegationGatewayExtensions
 {
     /// <summary>
-    /// Registers the authorizer. In-memory budget and receipt stores are added only if none are registered:
+    /// Registers the authorizer. In-memory budget, receipt, nonce and response stores are added only if none are registered:
     /// replace them with shared stores (Redis, SQL) when running more than one gateway instance. Agent policies
     /// come from <see cref="DelegationGatewayOptions.AgentPolicies"/> unless an <see cref="IAgentPolicyRegistry"/> is registered.
     /// </summary>
@@ -39,14 +45,19 @@ public static class DelegationGatewayExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IBudgetStore, InMemoryBudgetStore>();
         services.TryAddSingleton<IReceiptLedger, InMemoryReceiptLedger>();
+        services.TryAddSingleton<INonceStore>(sp => new InMemoryNonceStore(sp.GetRequiredService<TimeProvider>()));
+        services.TryAddSingleton<IIdempotentResponseCache>(sp =>
+            new InMemoryIdempotentResponseCache(sp.GetRequiredService<TimeProvider>()));
         services.TryAddSingleton<IAgentPolicyRegistry>(sp => new InMemoryAgentPolicyRegistry(
             sp.GetRequiredService<IOptions<DelegationGatewayOptions>>().Value.AgentPolicies));
         services.TryAddSingleton(sp => new DelegationAuthorizer(
             sp.GetRequiredService<IBudgetStore>(),
             sp.GetRequiredService<IReceiptLedger>(),
             sp.GetRequiredService<IAgentPolicyRegistry>(),
+            sp.GetRequiredService<INonceStore>(),
             sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<IOptions<DelegationGatewayOptions>>().Value.ReceiptSigningKey));
+            sp.GetRequiredService<IOptions<DelegationGatewayOptions>>().Value.ReceiptSigningKey,
+            sp.GetRequiredService<IOptions<DelegationGatewayOptions>>().Value.MaxClockSkew));
         return services;
     }
 

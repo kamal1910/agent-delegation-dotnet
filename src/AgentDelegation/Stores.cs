@@ -66,6 +66,38 @@ public sealed class InMemoryAgentPolicyRegistry(IEnumerable<KeyValuePair<string,
         _policies.TryGetValue(agentKey, out policy);
 }
 
+/// <summary>
+/// Remembers request nonces until they expire so a captured request cannot be sent twice. Shared across
+/// gateway instances in production (e.g. Redis <c>SET NX PX</c>).
+/// </summary>
+public interface INonceStore
+{
+    /// <summary>Records <paramref name="nonce"/> until <paramref name="expires"/>. Returns false if it was already used.</summary>
+    Task<bool> TryUseAsync(string nonce, DateTimeOffset expires, CancellationToken ct = default);
+}
+
+/// <summary>Process-local nonce store for tests and single-instance demos.</summary>
+public sealed class InMemoryNonceStore(TimeProvider? time = null) : INonceStore
+{
+    readonly ConcurrentDictionary<string, DateTimeOffset> _used = new(StringComparer.Ordinal);
+    readonly TimeProvider _time = time ?? TimeProvider.System;
+    int _calls;
+
+    /// <inheritdoc />
+    public Task<bool> TryUseAsync(string nonce, DateTimeOffset expires, CancellationToken ct = default)
+    {
+        if (Interlocked.Increment(ref _calls) % 1024 == 0) Prune();
+        return Task.FromResult(_used.TryAdd(nonce, expires));
+    }
+
+    void Prune()
+    {
+        DateTimeOffset now = _time.GetUtcNow();
+        foreach (KeyValuePair<string, DateTimeOffset> entry in _used)
+            if (entry.Value < now) _used.TryRemove(entry);
+    }
+}
+
 /// <summary>Process-local budget store for tests and single-instance demos.</summary>
 public sealed class InMemoryBudgetStore : IBudgetStore
 {

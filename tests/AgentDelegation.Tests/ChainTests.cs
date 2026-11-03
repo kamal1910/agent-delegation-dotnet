@@ -59,10 +59,10 @@ public sealed class ChainTests : IDisposable
     [Fact]
     public void Hand_built_block_that_widens_scope_is_rejected()
     {
-        Block parent = _s.ToPayments.Last;
-        Block widened = new(parent.Scope with { Actions = ["payments.refund", "payments.transfer"] },
-            "more power", DelegationCrypto.PublicKey(_s.PaymentsKey), DelegationCrypto.Hash(parent));
-        DelegationChain chain = new([.. _s.ToPayments.Blocks, new SignedBlock(widened, DelegationCrypto.Sign(_s.PaymentsKey, widened))]);
+        SignedBlock parent = _s.ToPayments.Blocks[^1];
+        Block widened = new(parent.Block.Scope with { Actions = ["payments.refund", "payments.transfer"] },
+            "more power", DelegationCrypto.PublicKey(_s.PaymentsKey), parent.Hash);
+        DelegationChain chain = new([.. _s.ToPayments.Blocks, SignedBlock.Sign(_s.PaymentsKey, widened)]);
 
         Assert.Equal("scope widened at hop 2", Verify(chain).Reason);
     }
@@ -70,10 +70,10 @@ public sealed class ChainTests : IDisposable
     [Fact]
     public void Wildcard_cannot_be_introduced_below_a_named_recipient()
     {
-        Block parent = _s.Root.Last;
-        Block widened = new(parent.Scope with { Recipients = [Scope.Any], MaxDepth = 0 },
-            "anyone", DelegationCrypto.PublicKey(_s.PaymentsKey), DelegationCrypto.Hash(parent));
-        DelegationChain chain = new([.. _s.Root.Blocks, new SignedBlock(widened, DelegationCrypto.Sign(_s.SupportKey, widened))]);
+        SignedBlock parent = _s.Root.Blocks[^1];
+        Block widened = new(parent.Block.Scope with { Recipients = [Scope.Any], MaxDepth = 0 },
+            "anyone", DelegationCrypto.PublicKey(_s.PaymentsKey), parent.Hash);
+        DelegationChain chain = new([.. _s.Root.Blocks, SignedBlock.Sign(_s.SupportKey, widened)]);
 
         Assert.Equal("scope widened at hop 1", Verify(chain).Reason);
     }
@@ -81,10 +81,10 @@ public sealed class ChainTests : IDisposable
     [Fact]
     public void Tree_budget_can_only_be_set_on_the_root()
     {
-        Block parent = _s.Root.Last;
-        Block topUp = new(parent.Scope with { MaxDepth = 0 }, "bigger budget",
-            DelegationCrypto.PublicKey(_s.PaymentsKey), DelegationCrypto.Hash(parent), TreeBudget: 99_999m);
-        DelegationChain chain = new([.. _s.Root.Blocks, new SignedBlock(topUp, DelegationCrypto.Sign(_s.SupportKey, topUp))]);
+        SignedBlock parent = _s.Root.Blocks[^1];
+        Block topUp = new(parent.Block.Scope with { MaxDepth = 0 }, "bigger budget",
+            DelegationCrypto.PublicKey(_s.PaymentsKey), parent.Hash, TreeBudget: 99_999m);
+        DelegationChain chain = new([.. _s.Root.Blocks, SignedBlock.Sign(_s.SupportKey, topUp)]);
 
         Assert.Equal("tree budget set below the root at hop 1", Verify(chain).Reason);
     }
@@ -108,7 +108,8 @@ public sealed class ChainTests : IDisposable
     public void Editing_an_earlier_block_breaks_its_signature()
     {
         SignedBlock root = _s.ToPayments.Blocks[0];
-        SignedBlock edited = root with { Block = root.Block with { Scope = root.Block.Scope with { MaxAmount = 99_999m } } };
+        Block bigger = root.Block with { Scope = root.Block.Scope with { MaxAmount = 99_999m } };
+        SignedBlock edited = new(SignedBlock.EncodePayload(bigger), root.Signature);
         DelegationChain chain = new([edited, .. _s.ToPayments.Blocks.Skip(1)]);
 
         Assert.Equal("bad signature at hop 0", Verify(chain).Reason);
@@ -140,10 +141,33 @@ public sealed class ChainTests : IDisposable
         Assert.Equal(_s.ToPayments.RootId, decoded.RootId);
     }
 
+    [Fact]
+    public void Signatures_cover_the_exact_bytes_not_a_re_serialization()
+    {
+        // Hand-written JSON with its own key order, spacing and number format, as another language might produce.
+        string json = $$"""
+            { "task" : "Refund order #4471", "prevHash": "",
+              "holderKey": "{{DelegationCrypto.PublicKey(_s.SupportKey)}}",
+              "scope": { "maxDepth": 1, "expires": "{{_s.Now.AddHours(1):O}}",
+                         "actions": ["payments.refund"], "recipients": ["C-881"], "maxAmount": 1200.00 } }
+            """;
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        SignedBlock root = new(Convert.ToBase64String(bytes), DelegationCrypto.SignBytes(_s.UserKey, bytes));
+        DelegationChain chain = new DelegationChain([root]).Delegate(_s.SupportKey,
+            new Scope(["payments.refund"], ["C-881"], 1200m, 0, _s.Now.AddMinutes(10)),
+            _s.PaymentsPolicy, "Issue refund", DelegationCrypto.PublicKey(_s.PaymentsKey));
+
+        Assert.True(DelegationChain.TryDecode(chain.Encode(), out DelegationChain decoded));
+        Assert.True(Verify(decoded).Ok, Verify(decoded).Reason);
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(), decoded.RootId);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("not base64!")]
     [InlineData("bnVsbA==")]
+    [InlineData("eyJibG9ja3MiOlt7InBheWxvYWQiOiIhISEiLCJzaWduYXR1cmUiOiJ4In1dfQ==")]
+    [InlineData("eyJibG9ja3MiOltudWxsXX0=")]
     public void Malformed_encodings_are_rejected(string encoded) =>
         Assert.False(DelegationChain.TryDecode(encoded, out _));
 

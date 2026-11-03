@@ -8,8 +8,10 @@ public sealed class AuthorizerTests : IDisposable
     readonly InMemoryReceiptLedger _ledger = new();
     readonly DelegationAuthorizer _authorizer;
 
-    public AuthorizerTests() =>
-        _authorizer = new(new InMemoryBudgetStore(), _ledger, _s.Policies, new FixedTime(_s.Now));
+    public AuthorizerTests() => _authorizer = New(_s.Policies);
+
+    DelegationAuthorizer New(IAgentPolicyRegistry policies, ECDsa? receiptKey = null) =>
+        new(new InMemoryBudgetStore(), _ledger, policies, new InMemoryNonceStore(), new FixedTime(_s.Now), receiptKey);
 
     public void Dispose() => _s.Dispose();
 
@@ -19,10 +21,17 @@ public sealed class AuthorizerTests : IDisposable
     Task<AuthorizationDecision> Call(DelegationAuthorizer authorizer, DelegationChain chain, ToolAction action,
                                      ECDsa signer, string? key = null)
     {
-        string body = RefundScenario.Body(action);
-        return authorizer.AuthorizeAsync(
-            new(chain, _s.UserPublicKey, body, DelegationCrypto.Sign(signer, body), action, key));
+        RequestProof proof = Proof(action, key);
+        return authorizer.AuthorizeAsync(new(chain, _s.UserPublicKey, proof, proof.Sign(signer), action));
     }
+
+    RequestProof Proof(ToolAction action, string? key = null, string target = "/refunds", long? timestamp = null,
+                       string? nonce = null) =>
+        RequestProof.For("POST", target, timestamp ?? _s.Now.ToUnixTimeSeconds(), nonce ?? RequestProof.NewNonce(),
+                         key, System.Text.Encoding.UTF8.GetBytes(RefundScenario.Body(action)));
+
+    Task<AuthorizationDecision> Send(RequestProof proof, string signature, ToolAction action) =>
+        _authorizer.AuthorizeAsync(new(_s.ToPayments, _s.UserPublicKey, proof, signature, action));
 
     static ToolAction Refund(string recipient = "C-881", decimal amount = 1200m) =>
         new("payments.refund", recipient, amount);
@@ -112,7 +121,7 @@ public sealed class AuthorizerTests : IDisposable
         InMemoryAgentPolicyRegistry strict = new();
         strict.Register(DelegationCrypto.PublicKey(_s.SupportKey), _s.SupportPolicy);
         strict.Register(DelegationCrypto.PublicKey(_s.PaymentsKey), _s.PaymentsPolicy with { MaxAmount = 500m });
-        DelegationAuthorizer authorizer = new(new InMemoryBudgetStore(), _ledger, strict, new FixedTime(_s.Now));
+        DelegationAuthorizer authorizer = New(strict);
 
         AuthorizationDecision d = await Call(authorizer, _s.ToPayments, Refund(amount: 100m), _s.PaymentsKey);
 
@@ -149,12 +158,78 @@ public sealed class AuthorizerTests : IDisposable
     public async Task Signs_receipts_when_a_gateway_key_is_configured()
     {
         using ECDsa gatewayKey = DelegationCrypto.CreateKey();
-        DelegationAuthorizer signing = new(new InMemoryBudgetStore(), _ledger, _s.Policies, new FixedTime(_s.Now), gatewayKey);
-        string body = RefundScenario.Body(Refund());
+        DelegationAuthorizer signing = New(_s.Policies, gatewayKey);
 
-        AuthorizationDecision d = await signing.AuthorizeAsync(new(_s.ToPayments, _s.UserPublicKey, body,
-            DelegationCrypto.Sign(_s.PaymentsKey, body), Refund()));
+        AuthorizationDecision d = await Call(signing, _s.ToPayments, Refund(), _s.PaymentsKey);
 
         Assert.True(DelegationCrypto.Verify(DelegationCrypto.PublicKey(gatewayKey), d.Receipt.Receipt, d.Receipt.Signature!));
+    }
+
+    [Fact]
+    public async Task A_captured_request_cannot_be_sent_again()
+    {
+        RequestProof proof = Proof(Refund(amount: 10m));
+        string signature = proof.Sign(_s.PaymentsKey);
+
+        AuthorizationDecision first = await Send(proof, signature, Refund(amount: 10m));
+        AuthorizationDecision replay = await Send(proof, signature, Refund(amount: 10m));
+
+        Assert.True(first.Allowed, first.Reason);
+        Assert.Equal("replayed request", replay.Reason);
+    }
+
+    [Theory]
+    [InlineData(-121)]
+    [InlineData(121)]
+    public async Task Requests_signed_outside_the_clock_window_are_stale(int offsetSeconds)
+    {
+        RequestProof proof = Proof(Refund(), timestamp: _s.Now.ToUnixTimeSeconds() + offsetSeconds);
+
+        AuthorizationDecision d = await Send(proof, proof.Sign(_s.PaymentsKey), Refund());
+
+        Assert.Equal("stale request", d.Reason);
+    }
+
+    [Fact]
+    public async Task A_signature_for_another_route_is_rejected()
+    {
+        RequestProof signedFor = Proof(Refund(), target: "/refunds/preview");
+        RequestProof received = signedFor with { Target = "/refunds" };
+
+        AuthorizationDecision d = await Send(received, signedFor.Sign(_s.PaymentsKey), Refund());
+
+        Assert.Equal("caller is not the chain holder", d.Reason);
+    }
+
+    [Fact]
+    public async Task A_signature_for_another_body_is_rejected()
+    {
+        RequestProof signedFor = Proof(Refund(amount: 10m));
+        RequestProof received = Proof(Refund(amount: 1200m), nonce: signedFor.Nonce);
+
+        AuthorizationDecision d = await Send(received, signedFor.Sign(_s.PaymentsKey), Refund(amount: 1200m));
+
+        Assert.Equal("caller is not the chain holder", d.Reason);
+    }
+
+    [Fact]
+    public async Task Short_nonces_are_rejected()
+    {
+        RequestProof proof = Proof(Refund(), nonce: "1234");
+
+        AuthorizationDecision d = await Send(proof, proof.Sign(_s.PaymentsKey), Refund());
+
+        Assert.Equal("invalid nonce", d.Reason);
+    }
+
+    [Fact]
+    public async Task An_idempotency_key_cannot_be_reused_for_a_different_action()
+    {
+        AuthorizationDecision first = await Call(_s.ToPayments, Refund(amount: 1m), _s.PaymentsKey, "wf-1:refund");
+        AuthorizationDecision bigger = await Call(_s.ToPayments, Refund(amount: 1199m), _s.PaymentsKey, "wf-1:refund");
+
+        Assert.True(first.Allowed, first.Reason);
+        Assert.False(bigger.Allowed);
+        Assert.Equal("idempotency key reused for a different action", bigger.Reason);
     }
 }
