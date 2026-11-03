@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+type: software
+title: "AgentDelegation: signed, narrowing delegation chains for AI agents in .NET"
+abstract: >-
+  A .NET library and ASP.NET Core gateway that enforce delegated authority between
+  AI agents. Every hand-off is a signed block hash-linked to a user-signed root
+  ticket; each hop's scope is the intersection of the parent scope, the requested
+  scope and the delegatee's registered policy. The gateway verifies the chain, a
+  request-bound proof of possession, the action's scope and a budget shared by
+  the whole delegation tree before any tool runs, and writes a receipt for every
+  decision.
+authors:
+  - family-names: Ayyau
+    given-names: Kamalakannan
+version: 0.4.0
+date-released: 2026-11-02
+license: MIT
+repository-code: "https://github.com/kamal1910/agent-delegation-dotnet"
+url: "https://www.nuget.org/packages/AgentDelegation"
+keywords:
+  - ai agents
+  - agent-to-agent delegation
+  - authorization
+  - capabilities
+  - confused deputy
+  - prompt injection
+  - zero trust
+  - dotnet
