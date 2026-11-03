@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/kamal1910/agent-delegation-dotnet/actions/workflows/ci.yml/badge.svg)](https://github.com/kamal1910/agent-delegation-dotnet/actions/workflows/ci.yml)
 [![NuGet](https://img.shields.io/nuget/v/AgentDelegation.svg)](https://www.nuget.org/packages/AgentDelegation)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23909930.svg)](https://doi.org/10.5281/zenodo.23909930)
 
 Signed, narrowing delegation chains for AI agents in .NET.
 
