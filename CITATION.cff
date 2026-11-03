@@ -15,6 +15,14 @@ authors:
     given-names: Kamalakannan
 version: 0.4.1
 date-released: 2026-11-03
+doi: 10.5281/zenodo.23909930
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23909930
+    description: Concept DOI for all versions (resolves to the latest)
+  - type: doi
+    value: 10.5281/zenodo.23909931
+    description: Version DOI for v0.4.1
 license: MIT
 repository-code: "https://github.com/kamal1910/agent-delegation-dotnet"
 url: "https://www.nuget.org/packages/AgentDelegation"
