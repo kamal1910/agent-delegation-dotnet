@@ -246,6 +246,19 @@ dotnet test tests/AgentDelegation.AttackSuite
 
 The file is written next to the test assembly as `attack-suite.csv`, or to the path in `ATTACK_SUITE_RESULTS`.
 
+## Performance
+
+`bench/AgentDelegation.Bench.Micro` measures chain verification, encoding and the full gateway decision as the
+number of hand-offs grows (1, 2, 4, 8, 16), plus the signing primitives:
+
+```bash
+dotnet run -c Release --project bench/AgentDelegation.Bench.Micro -- --filter '*'
+dotnet run -c Release --project bench/AgentDelegation.Bench.Micro -- sizes
+```
+
+`sizes` prints the `X-Delegation` header size per hop count. The header grows by roughly 0.9 KB per hand-off,
+so chains longer than about 8 hops can exceed the 8 KB per-header limit of common proxies such as nginx.
+
 ## Wire format
 
 Signatures cover exact bytes, never a re-serialization, so other languages can produce and check chains:
