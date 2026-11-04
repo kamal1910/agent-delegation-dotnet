@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `tests/AgentDelegation.AttackSuite`: 21 attacks and 2 legitimate controls (injected actions, privilege
+  escalation, confused deputy, chain integrity, proof of possession, fan-out, revocation lag). Each runs in a
+  fresh scenario and the results are written to a CSV.
+
 ## [0.4.1] - 2026-11-03
 
 ### Security

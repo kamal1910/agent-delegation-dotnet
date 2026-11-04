@@ -237,6 +237,15 @@ Wrapping is a hint to the model, not a security boundary. The gateway is what re
 
 Each row is covered by a test in `tests/AgentDelegation.Tests`.
 
+`tests/AgentDelegation.AttackSuite` runs 21 attacks and 2 legitimate controls against the gateway, each in a
+fresh scenario, and writes the outcomes to a CSV:
+
+```bash
+dotnet test tests/AgentDelegation.AttackSuite
+```
+
+The file is written next to the test assembly as `attack-suite.csv`, or to the path in `ATTACK_SUITE_RESULTS`.
+
 ## Wire format
 
 Signatures cover exact bytes, never a re-serialization, so other languages can produce and check chains:

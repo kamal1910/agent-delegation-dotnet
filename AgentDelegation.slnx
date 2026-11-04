@@ -8,6 +8,7 @@
     <Project Path="src/AgentDelegation/AgentDelegation.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AgentDelegation.AttackSuite/AgentDelegation.AttackSuite.csproj" />
     <Project Path="tests/AgentDelegation.Tests/AgentDelegation.Tests.csproj" />
   </Folder>
 </Solution>
