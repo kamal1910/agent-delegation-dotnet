@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-04
+
 ### Added
 - `tests/AgentDelegation.AttackSuite`: 21 attacks and 2 legitimate controls (injected actions, privilege
   escalation, confused deputy, chain integrity, proof of possession, fan-out, revocation lag). Each runs in a
@@ -100,7 +102,8 @@ All notable changes to this project are documented here. The format follows
 - `AgentDelegation.AspNetCore`: gateway middleware for tool APIs or YARP.
 - `AgentDelegation.SemanticKernel`: function filter that marks tool and sub-agent results as untrusted.
 
-[Unreleased]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.2.0...v0.3.0
