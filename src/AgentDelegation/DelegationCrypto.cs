@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -38,18 +39,71 @@ public static class DelegationCrypto
         VerifyBytes(publicKey, Canonical(value), signature);
 
     /// <summary>Verifies a base64 signature over raw bytes. Malformed input returns false.</summary>
+    /// <remarks>
+    /// Importing a public key costs more than checking the signature, and the same few keys (the user, each agent)
+    /// sign every request, so imported keys are cached. See <see cref="PublicKeyCache"/>.
+    /// </remarks>
     public static bool VerifyBytes(string publicKey, byte[] data, string signature)
     {
         if (string.IsNullOrEmpty(publicKey) || string.IsNullOrEmpty(signature)) return false;
         try
         {
-            using ECDsa key = ECDsa.Create();
-            key.ImportSubjectPublicKeyInfo(Convert.FromBase64String(publicKey), out _);
-            return key.VerifyData(data, Convert.FromBase64String(signature), HashAlgorithmName.SHA256);
+            byte[] sig = Convert.FromBase64String(signature);
+            ECDsa key = PublicKeyCache.Rent(publicKey, out ConcurrentBag<ECDsa> pool);
+            try
+            {
+                return key.VerifyData(data, sig, HashAlgorithmName.SHA256);
+            }
+            finally
+            {
+                pool.Add(key);
+            }
         }
         catch (Exception e) when (e is FormatException or CryptographicException)
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Imported public keys by their base64 form. An <see cref="ECDsa"/> instance isn't safe to share between
+    /// threads, so each key has a small pool: a verification rents an instance and returns it afterwards, and
+    /// concurrent verifications with the same key import extra instances. Only keys that imported successfully are
+    /// cached, and the cache is emptied when it holds more than <see cref="MaxKeys"/> keys, so arbitrary keys sent
+    /// by callers can't grow it without bound.
+    /// </summary>
+    internal static class PublicKeyCache
+    {
+        internal const int MaxKeys = 1024;
+
+        static readonly ConcurrentDictionary<string, ConcurrentBag<ECDsa>> Pools = new(StringComparer.Ordinal);
+
+        internal static int Count => Pools.Count;
+
+        internal static bool Contains(string publicKey) => Pools.ContainsKey(publicKey);
+
+        internal static ECDsa Rent(string publicKey, out ConcurrentBag<ECDsa> pool)
+        {
+            if (Pools.TryGetValue(publicKey, out ConcurrentBag<ECDsa>? existing) && existing.TryTake(out ECDsa? cached))
+            {
+                pool = existing;
+                return cached;
+            }
+
+            ECDsa key = ECDsa.Create();
+            try
+            {
+                key.ImportSubjectPublicKeyInfo(Convert.FromBase64String(publicKey), out _);
+            }
+            catch
+            {
+                key.Dispose();
+                throw;
+            }
+
+            if (existing is null && Pools.Count >= MaxKeys) Pools.Clear();
+            pool = Pools.GetOrAdd(publicKey, _ => []);
+            return key;
         }
     }
 }

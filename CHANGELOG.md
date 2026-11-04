@@ -10,6 +10,13 @@ All notable changes to this project are documented here. The format follows
 - `tests/AgentDelegation.AttackSuite`: 21 attacks and 2 legitimate controls (injected actions, privilege
   escalation, confused deputy, chain integrity, proof of possession, fan-out, revocation lag). Each runs in a
   fresh scenario and the results are written to a CSV.
+- `bench/AgentDelegation.Bench.Micro`: BenchmarkDotNet benchmarks for chain verification, encoding and the full
+  gateway decision at 1–16 hops, the signing primitives, and a `sizes` report of header size per hop count.
+
+### Changed
+- Signature verification caches imported public keys (bounded at 1,024 keys, one small pool of instances per
+  key so concurrent checks never share one). Importing a key cost more than checking the signature; in the
+  micro-benchmarks a single signature check is about 7× faster and a full gateway decision about 3× faster.
 
 ## [0.4.1] - 2026-11-03
 

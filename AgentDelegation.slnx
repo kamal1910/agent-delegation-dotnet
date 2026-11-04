@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/bench/">
+    <Project Path="bench/AgentDelegation.Bench.Micro/AgentDelegation.Bench.Micro.csproj" />
+  </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/RefundDemo/RefundDemo.csproj" />
   </Folder>
