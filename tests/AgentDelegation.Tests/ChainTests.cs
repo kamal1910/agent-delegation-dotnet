@@ -105,6 +105,32 @@ public sealed class ChainTests : IDisposable
     }
 
     [Fact]
+    public void Identical_approvals_get_different_tree_ids()
+    {
+        Scope scope = _s.Root.Last.Scope;
+        string support = DelegationCrypto.PublicKey(_s.SupportKey);
+
+        DelegationChain first = DelegationChain.Issue(_s.UserKey, scope, "Refund order #4471", support);
+        DelegationChain second = DelegationChain.Issue(_s.UserKey, scope, "Refund order #4471", support);
+
+        Assert.NotEqual(first.RootId, second.RootId);
+        Assert.True(Verify(first).Ok);
+        Assert.True(Verify(second).Ok);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("short")]
+    public void Root_without_a_proper_nonce_is_rejected(string? nonce)
+    {
+        Block root = new(_s.Root.Last.Scope, "Refund order #4471", DelegationCrypto.PublicKey(_s.SupportKey),
+            PrevHash: "", Nonce: nonce);
+        DelegationChain chain = new([SignedBlock.Sign(_s.UserKey, root)]);
+
+        Assert.Equal("missing root nonce", Verify(chain).Reason);
+    }
+
+    [Fact]
     public void Tree_budget_can_only_be_set_on_the_root()
     {
         SignedBlock parent = _s.Root.Blocks[^1];
@@ -172,7 +198,7 @@ public sealed class ChainTests : IDisposable
     {
         // Hand-written JSON with its own key order, spacing and number format, as another language might produce.
         string json = $$"""
-            { "task" : "Refund order #4471", "prevHash": "",
+            { "task" : "Refund order #4471", "prevHash": "", "nonce": "0123456789abcdef0123456789abcdef",
               "holderKey": "{{DelegationCrypto.PublicKey(_s.SupportKey)}}",
               "scope": { "maxDepth": 1, "expires": "{{_s.Now.AddHours(1):O}}",
                          "actions": ["payments.refund"], "recipients": ["C-881"], "maxAmount": 1200.00 } }

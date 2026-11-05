@@ -95,6 +95,23 @@ public sealed class AuthorizerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_second_identical_approval_has_its_own_budget_and_idempotency_keys()
+    {
+        // The user approves the same refund twice, e.g. for two separate tickets with identical wording.
+        DelegationChain again = DelegationChain.Issue(_s.UserKey, _s.Root.Last.Scope, _s.Root.Last.Task,
+            DelegationCrypto.PublicKey(_s.SupportKey)).Delegate(_s.SupportKey,
+            new Scope(["payments.refund"], ["C-881"], 1200m, 0, _s.Now.AddMinutes(10)),
+            _s.PaymentsPolicy, "Issue refund for #4471", DelegationCrypto.PublicKey(_s.PaymentsKey));
+
+        AuthorizationDecision first = await Call(_s.ToPayments, Refund(), _s.PaymentsKey, "wf:refund");
+        AuthorizationDecision second = await Call(again, Refund(), _s.PaymentsKey, "wf:refund");
+
+        Assert.True(first.Allowed, first.Reason);
+        Assert.True(second.Allowed, second.Reason);
+        Assert.False(second.Replayed);
+    }
+
+    [Fact]
     public async Task Tree_budget_is_separate_from_the_per_action_limit()
     {
         DelegationChain root = DelegationChain.Issue(_s.UserKey,

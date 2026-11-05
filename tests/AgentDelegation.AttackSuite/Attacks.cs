@@ -39,6 +39,15 @@ public static class Attacks
             return await w.Send(g, w.ToPayments, AttackWorld.Refund(), w.PaymentsKey, "wf-1:refund");
         }),
 
+        new("C03", "control", "A second, identical approval spends its own budget", "ok", async w =>
+        {
+            DelegationAuthorizer g = w.Gateway();
+            await w.Send(g, w.ToPayments, AttackWorld.Refund(), w.PaymentsKey);
+            DelegationChain again = DelegationChain.Issue(w.UserKey, w.Root.Last.Scope, w.Root.Last.Task,
+                AttackWorld.Public(w.SupportKey));
+            return await w.Send(g, w.HandOff(again, "Issue refund for #4471"), AttackWorld.Refund(), w.PaymentsKey);
+        }),
+
         // ---- Injected changes to the action (intent drift, injected subtasks) -------------------------
 
         new("A01", "injected action", "Change the recipient to X-999", "recipient not allowed",
@@ -198,6 +207,15 @@ public static class Attacks
             RequestProof proof = w.Proof(AttackWorld.Refund(), at: later);
             return w.Gateway(now: later).AuthorizeAsync(new(w.ToPayments, w.UserPublicKey, proof,
                 proof.Sign(w.PaymentsKey), AttackWorld.Refund()));
+        }),
+
+        // ---- Tree identity ----------------------------------------------------------------------------
+
+        new("A22", "chain integrity", "Root ticket without a nonce", "missing root nonce", w =>
+        {
+            Block root = w.Root.Last with { Nonce = null };
+            DelegationChain chain = new([SignedBlock.Sign(w.UserKey, root)]);
+            return w.Send(w.Gateway(), w.HandOff(chain, "Refund"), AttackWorld.Refund(), w.PaymentsKey);
         }),
     ];
 

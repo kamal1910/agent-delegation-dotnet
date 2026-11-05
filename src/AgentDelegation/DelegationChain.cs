@@ -13,7 +13,12 @@ namespace AgentDelegation;
 /// Total spend shared by the whole delegation tree. Only the root may set it; when unset the root's
 /// <see cref="Scope.MaxAmount"/> is used.
 /// </param>
-public sealed record Block(Scope Scope, string Task, string HolderKey, string PrevHash, decimal? TreeBudget = null);
+/// <param name="Nonce">
+/// A random value in the root only. The tree's id is the hash of the root, so without it two approvals with the
+/// same content would share one budget, one ledger history and one set of idempotency keys.
+/// </param>
+public sealed record Block(Scope Scope, string Task, string HolderKey, string PrevHash, decimal? TreeBudget = null,
+                           string? Nonce = null);
 
 /// <summary>
 /// A block as the exact bytes that were signed, plus the signature of whoever held the previous block
@@ -93,7 +98,7 @@ public sealed record DelegationChain(IReadOnlyList<SignedBlock> Blocks)
     /// </summary>
     public static DelegationChain Issue(ECDsa userKey, Scope scope, string intent, string firstAgentKey,
                                         decimal? treeBudget = null) =>
-        new([SignedBlock.Sign(userKey, new Block(scope, intent, firstAgentKey, PrevHash: "", treeBudget))]);
+        new([SignedBlock.Sign(userKey, NewRoot(scope, intent, firstAgentKey, treeBudget))]);
 
     /// <summary>
     /// Like <see cref="Issue"/>, but signs with an <see cref="IDelegationSigner"/> such as a Key Vault key.
@@ -101,7 +106,10 @@ public sealed record DelegationChain(IReadOnlyList<SignedBlock> Blocks)
     public static async Task<DelegationChain> IssueAsync(IDelegationSigner userSigner, Scope scope, string intent,
                                                          string firstAgentKey, decimal? treeBudget = null,
                                                          CancellationToken ct = default) =>
-        new([await SignedBlock.SignAsync(userSigner, new Block(scope, intent, firstAgentKey, PrevHash: "", treeBudget), ct)]);
+        new([await SignedBlock.SignAsync(userSigner, NewRoot(scope, intent, firstAgentKey, treeBudget), ct)]);
+
+    static Block NewRoot(Scope scope, string intent, string firstAgentKey, decimal? treeBudget) =>
+        new(scope, intent, firstAgentKey, PrevHash: "", treeBudget, Nonce: RequestProof.NewNonce());
 
     /// <summary>
     /// The current holder hands off a subtask. The new scope is

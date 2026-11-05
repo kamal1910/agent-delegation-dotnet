@@ -86,7 +86,7 @@ public class CryptoBenchmarks
         _key = DelegationCrypto.CreateKey();
         _publicKey = DelegationCrypto.PublicKey(_key);
         _block = new Block(new Scope(["payments.refund"], ["C-881"], 1200m, 1, ChainFixture.Now.AddHours(1)),
-            "Refund order #4471", _publicKey, PrevHash: "");
+            "Refund order #4471", _publicKey, PrevHash: "", Nonce: RequestProof.NewNonce());
         _signed = SignedBlock.Sign(_key, _block);
         _body = Encoding.UTF8.GetBytes("""{"action":"payments.refund","recipient":"C-881","amount":1200}""");
         _proof = RequestProof.For("POST", "/refunds", ChainFixture.Now.ToUnixTimeSeconds(), RequestProof.NewNonce(), null, _body);

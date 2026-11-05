@@ -38,6 +38,8 @@ public static class ChainVerifier
             {
                 if (block.PrevHash != "") return new(false, "root has a parent link");
                 if (block.TreeBudget < 0) return new(false, "negative tree budget");
+                // The tree id is the root's hash; the nonce keeps two approvals with the same content apart.
+                if (block.Nonce is not { Length: >= 16 and <= 128 }) return new(false, "missing root nonce");
                 // A user approves named actions and recipients. With no wildcard at the root, IsWithin keeps one
                 // from appearing anywhere below it.
                 if (block.Scope.Actions.Contains(Scope.Any) || block.Scope.Recipients.Contains(Scope.Any))

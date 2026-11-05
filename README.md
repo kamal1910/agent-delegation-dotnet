@@ -237,10 +237,11 @@ Wrapping is a hint to the model, not a security boundary. The gateway is what re
 | Captured request sent again | `replayed request` |
 | Request signed more than 2 minutes ago (or ahead) | `stale request` |
 | Signature reused for another route or body | `caller is not the chain holder` |
+| Root ticket without a nonce | `missing root nonce` |
 
 Each row is covered by a test in `tests/AgentDelegation.Tests`.
 
-`tests/AgentDelegation.AttackSuite` runs 21 attacks and 2 legitimate controls against the gateway, each in a
+`tests/AgentDelegation.AttackSuite` runs 22 attacks and 3 legitimate controls against the gateway, each in a
 fresh scenario, and writes the outcomes to a CSV:
 
 ```bash
@@ -280,6 +281,9 @@ Signatures cover exact bytes, never a re-serialization, so other languages can p
 - **Block:** each `SignedBlock` carries `payload` (base64 of the block's JSON bytes, exactly as signed) and
   `signature` (ECDSA P-256 / SHA-256, IEEE P1363, base64). A block's hash is the lower-case hex SHA-256 of its
   payload bytes; the next block's `prevHash` and the tree's root id use that hash.
+- **Root nonce:** the root block carries a `nonce` (16–128 characters, random). The tree's id is the root's hash, so
+  the nonce keeps two approvals with identical content from sharing a budget, a receipt history or idempotency keys.
+  `Issue` and `IssueAsync` add it; a root without one is rejected.
 - **Request:** the holder signs the UTF-8 bytes of these lines joined with `\n`:
   `agent-delegation-request-v1`, the upper-case method, the path and query as sent, the Unix timestamp in seconds,
   the nonce, the `Idempotency-Key` (or empty), and the lower-case hex SHA-256 of the body.

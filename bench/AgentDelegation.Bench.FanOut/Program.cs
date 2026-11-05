@@ -49,8 +49,8 @@ policies.Register(payments, paymentsPolicy);
 ToolAction refund = new("payments.refund", "C-881", Limit);
 byte[] body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(refund, DelegationCrypto.Json));
 
-// Every run issues roots with the same content, and a tree's id is the hash of its root, so each run needs a budget
-// store of its own: a fresh in-memory store, or a fresh key prefix in Redis.
+// Each run gets a budget store of its own (a fresh in-memory store, or a fresh key prefix in Redis) so runs stay
+// independent and Redis keys can be cleaned up together.
 List<(string Name, Func<IBudgetStore> Create, Func<Task> Cleanup)> stores =
 [
     ("memory", () => new InMemoryBudgetStore(), () => Task.CompletedTask),

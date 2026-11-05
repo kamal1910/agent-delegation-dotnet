@@ -14,6 +14,15 @@ All notable changes to this project are documented here. The format follows
   a ticket per branch, with the in-memory store and (with `REDIS_CONNECTION`) Redis. Writes a CSV.
 - CI starts a Redis service so the Redis integration tests run on every build.
 
+### Changed
+- **Breaking:** root blocks carry a random `nonce`, added by `Issue` and `IssueAsync`, and the verifier rejects a
+  root without one (`missing root nonce`). Chains issued with 0.4.x no longer verify.
+
+### Fixed
+- Two approvals with identical content (intent, scope, expiry and first agent) got the same tree id, so they shared
+  one tree budget and one set of idempotency keys. A retry key from the first approval could make the second
+  approval's call look like a replay, so its tool never ran. The root nonce gives every approval its own tree.
+
 ## [0.4.2] - 2026-11-04
 
 ### Added
