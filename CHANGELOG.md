@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-04
+
 ### Added
 - `AgentDelegation.Redis` package: `RedisBudgetStore`, a tree budget shared by every gateway instance. Check and
   spend run as one Lua script; amounts are stored as exact integers of 10^-4 units by default
@@ -119,7 +121,8 @@ All notable changes to this project are documented here. The format follows
 - `AgentDelegation.AspNetCore`: gateway middleware for tool APIs or YARP.
 - `AgentDelegation.SemanticKernel`: function filter that marks tool and sub-agent results as untrusted.
 
-[Unreleased]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.3.0...v0.4.0
