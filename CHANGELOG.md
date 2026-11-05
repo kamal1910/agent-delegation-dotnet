@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `AgentDelegation.Redis` package: `RedisBudgetStore`, a tree budget shared by every gateway instance. Check and
+  spend run as one Lua script; amounts are stored as exact integers of 10^-4 units by default
+  (`RedisBudgetStoreOptions.Scale`), and a tree's spend is kept for `Retention` (default 7 days) after its last charge.
+- `bench/AgentDelegation.Bench.FanOut`: K = 1–32 concurrent branches across 4 gateway instances, tree budgets vs
+  a ticket per branch, with the in-memory store and (with `REDIS_CONNECTION`) Redis. Writes a CSV.
+- CI starts a Redis service so the Redis integration tests run on every build.
+
 ## [0.4.2] - 2026-11-04
 
 ### Added

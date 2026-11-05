@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/bench/">
+    <Project Path="bench/AgentDelegation.Bench.FanOut/AgentDelegation.Bench.FanOut.csproj" />
     <Project Path="bench/AgentDelegation.Bench.Micro/AgentDelegation.Bench.Micro.csproj" />
   </Folder>
   <Folder Name="/samples/">
@@ -7,11 +8,13 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/AgentDelegation.AspNetCore/AgentDelegation.AspNetCore.csproj" />
+    <Project Path="src/AgentDelegation.Redis/AgentDelegation.Redis.csproj" />
     <Project Path="src/AgentDelegation.SemanticKernel/AgentDelegation.SemanticKernel.csproj" />
     <Project Path="src/AgentDelegation/AgentDelegation.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AgentDelegation.AttackSuite/AgentDelegation.AttackSuite.csproj" />
+    <Project Path="tests/AgentDelegation.Redis.Tests/AgentDelegation.Redis.Tests.csproj" />
     <Project Path="tests/AgentDelegation.Tests/AgentDelegation.Tests.csproj" />
   </Folder>
 </Solution>

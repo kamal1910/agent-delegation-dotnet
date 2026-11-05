@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
+    <PackageId>AgentDelegation.Redis</PackageId>
+    <Description>Redis-backed tree budget store for AgentDelegation, so every gateway instance draws from the same delegation-tree budget with an atomic check-and-spend.</Description>
+    <PackageTags>$(PackageTags);redis;budget</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="StackExchange.Redis" Version="3.4.29" />
+    <ProjectReference Include="..\AgentDelegation\AgentDelegation.csproj" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

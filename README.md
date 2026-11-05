@@ -15,11 +15,13 @@ the one before? OAuth token exchange records the chain but doesn't enforce it. T
 | `AgentDelegation` | Scopes, signed chains, verifier, transport-agnostic authorizer, `HttpClient` handler, untrusted-content wrapping |
 | `AgentDelegation.AspNetCore` | Gateway middleware to put in front of tool APIs or YARP |
 | `AgentDelegation.SemanticKernel` | Function filter that marks every tool/sub-agent result as untrusted |
+| `AgentDelegation.Redis` | Tree budget store shared by every gateway instance, with an atomic check-and-spend |
 
 ```bash
 dotnet add package AgentDelegation
 dotnet add package AgentDelegation.AspNetCore
 dotnet add package AgentDelegation.SemanticKernel
+dotnet add package AgentDelegation.Redis
 ```
 
 Targets .NET 8 and .NET 9.
@@ -128,7 +130,8 @@ builder.Services.AddDelegationGateway(o =>
     o.MaxClockSkew = TimeSpan.FromMinutes(2);      // how old or early a signed request may be
 });
 // Or register your own IAgentPolicyRegistry (e.g. backed by a database) instead of AgentPolicies.
-builder.Services.AddSingleton<IBudgetStore, RedisBudgetStore>();     // your shared, atomic store
+builder.Services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect("localhost:6379"));
+builder.Services.AddSingleton<IBudgetStore, RedisBudgetStore>();     // AgentDelegation.Redis: shared tree budgets
 builder.Services.AddSingleton<IReceiptLedger, SqlReceiptLedger>();   // your append-only ledger
 builder.Services.AddSingleton<INonceStore, RedisNonceStore>();       // used request nonces (SET NX with expiry)
 builder.Services.AddSingleton<IIdempotentResponseCache, RedisResponseCache>(); // first responses for retries
@@ -258,6 +261,17 @@ dotnet run -c Release --project bench/AgentDelegation.Bench.Micro -- sizes
 
 `sizes` prints the `X-Delegation` header size per hop count. The header grows by roughly 0.9 KB per hand-off,
 so chains longer than about 8 hops can exceed the 8 KB per-header limit of common proxies such as nginx.
+
+`bench/AgentDelegation.Bench.FanOut` checks that tree budgets stop allowance multiplication. One $1,200 approval
+is handed to K = 1–32 branches that all try to spend $1,200 at once across 4 gateway instances sharing one budget
+store, compared with giving each branch its own ticket:
+
+```bash
+dotnet run -c Release --project bench/AgentDelegation.Bench.FanOut -- --runs 100 --out fanout.csv
+```
+
+Set `REDIS_CONNECTION` to also run it against `RedisBudgetStore`. With tree budgets total spend stays at $1,200
+for every K; with a ticket per branch it grows to K × $1,200.
 
 ## Wire format
 
