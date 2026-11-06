@@ -81,7 +81,8 @@ public sealed class DelegationAuthorizer(
         if (request.IdempotencyKey is { } key &&
             await ledger.FindAllowedAsync(rootId, key, ct) is { } earlier)
         {
-            return earlier.Receipt.Action == request.Action
+            // Receipts hold redacted actions, so compare like with like.
+            return earlier.Receipt.Action == request.Action.Redacted()
                 ? new(true, "replayed", earlier, Replayed: true)
                 : await DecideAsync(request, rootId, Deny, "idempotency key reused for a different action", ct);
         }
@@ -95,7 +96,8 @@ public sealed class DelegationAuthorizer(
     async Task<AuthorizationDecision> DecideAsync(
         AuthorizationRequest request, string rootId, string decision, string reason, CancellationToken ct)
     {
-        Receipt receipt = new(rootId, request.Chain.ChainHash, request.Action,
+        // Argument values (a new password, say) are recorded only as hashes.
+        Receipt receipt = new(rootId, request.Chain.ChainHash, request.Action.Redacted(),
                               decision, reason, time.GetUtcNow(), request.IdempotencyKey);
         string? signature = receiptSigner is null
             ? null

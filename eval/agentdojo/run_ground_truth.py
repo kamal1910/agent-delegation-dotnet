@@ -7,9 +7,11 @@ For every banking user task, and every (user task, injection task) pair:
                  prompt injection had taken complete control of it. This is the strongest attacker AgentDojo can
                  express; a real model obeys injections only some of the time.
 
-Each run happens twice: with no control (plain tools, like an agent holding broad service credentials) and with
-every state-changing call routed through the gateway, under a root scope the user approved for that user task
-(oracle scope: exactly what the task's ground truth needs).
+Each run happens three times:
+  none              no control (plain tools, like an agent holding broad service credentials)
+  gateway-unbound   every state-changing call routed through the gateway, under the oracle scope (exactly the
+                    actions, recipients and amounts the task's ground truth needs)
+  gateway           the same, with the values of account-change arguments (e.g. the new password) bound in the root
 
   dotnet run -c Release --project eval/AgentDojoGateway          # in another terminal
   .venv/Scripts/python run_ground_truth.py --out results/ground_truth.csv
@@ -32,6 +34,7 @@ from agentdojo.types import ChatAssistantMessage, ChatMessage, ChatToolResultMes
 from gate import GateLog, GatewayClient, gated_runtime, oracle_scope
 
 BENCHMARK_VERSION = "v1.2.2"
+MODES = ("none", "gateway-unbound", "gateway")
 
 
 class ScriptedAgent(BasePipelineElement):
@@ -91,13 +94,18 @@ def main() -> None:
     for user_task in suite.user_tasks.values():
         # The scope the user approves, from the task's own ground truth on its starting environment.
         start = user_task.init_environment(suite.load_and_inject_default_environment(defaults))
-        scope = oracle_scope(list(user_task.ground_truth(start)), start)
+        ground_truth = list(user_task.ground_truth(start))
+        scopes = {
+            "gateway-unbound": oracle_scope(ground_truth, start, bind_arguments=False),
+            "gateway": oracle_scope(ground_truth, start, bind_arguments=True),
+        }
 
         for injection_task in [None, *suite.injection_tasks.values()]:
-            for mode in ("none", "gateway"):
+            for mode in MODES:
                 log = GateLog()
                 runtime_class: type[FunctionsRuntime] = FunctionsRuntime
-                if mode == "gateway":
+                scope = scopes.get(mode)
+                if scope is not None:
                     runtime_class = gated_runtime(client, client.create_task(user_task.PROMPT, scope), log)
 
                 utility, security = suite.run_task_with_pipeline(
@@ -113,8 +121,9 @@ def main() -> None:
                         "attack_success": security if injection_task else "",
                         "denied_calls": sum(1 for d in log.decisions if not d[3]),
                         "deny_reasons": ";".join(sorted({d[4] for d in log.decisions if not d[3]})),
-                        "scope_actions": " ".join(sorted(scope.actions)),
-                        "scope_recipients": " ".join(sorted(scope.recipients)),
+                        "scope_actions": " ".join(sorted(scopes["gateway"].actions)),
+                        "scope_recipients": " ".join(sorted(scopes["gateway"].recipients)),
+                        "bound_arguments": " ".join(sorted(scope.arguments)) if scope else "",
                     }
                 )
 
@@ -131,9 +140,9 @@ def main() -> None:
         return f"{hits}/{len(selected)} ({100 * hits / max(len(selected), 1):.1f}%)"
 
     print(f"banking {BENCHMARK_VERSION}: {len(suite.user_tasks)} user tasks, {len(suite.injection_tasks)} injection tasks")
-    for mode in ("none", "gateway"):
+    for mode in MODES:
         print(
-            f"  {mode:8} utility (no attack) {rate(mode, 'utility', False):>16}   "
+            f"  {mode:16} utility (no attack) {rate(mode, 'utility', False):>16}   "
             f"utility under attack {rate(mode, 'utility', True):>16}   "
             f"attack success {rate(mode, 'attack_success', True):>16}"
         )

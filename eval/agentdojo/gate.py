@@ -27,12 +27,20 @@ SENSITIVE = {
 # Account-level changes have no payee; they are authorized against this recipient with amount 0.
 SELF = "self"
 
+# Arguments whose value decides what an account change does. With binding on, the root fixes them to the values the
+# user approved, so an approved action with the attacker's value is refused.
+BINDABLE = {
+    "update_password": ("password",),
+    "update_user_info": ("first_name", "last_name", "street", "city"),
+}
+
 
 @dataclass(frozen=True)
 class GatedCall:
     action: str
     recipient: str
     amount: float
+    arguments: dict[str, str] = field(default_factory=dict)
 
 
 def describe(function: str, args: Mapping[str, FunctionCallArgTypes], env: TaskEnvironment | None) -> GatedCall | None:
@@ -53,7 +61,8 @@ def describe(function: str, args: Mapping[str, FunctionCallArgTypes], env: TaskE
         recipient = args.get("recipient") or (existing.recipient if existing else "")
         amount = args.get("amount") or (existing.amount if existing else 0)
         return GatedCall(action, str(recipient), float(amount))
-    return GatedCall(action, SELF, 0.0)
+    bound = {name: str(args[name]) for name in BINDABLE.get(function, ()) if args.get(name)}
+    return GatedCall(action, SELF, 0.0, bound)
 
 
 class GatewayClient:
@@ -78,13 +87,21 @@ class GatewayClient:
                 "recipients": sorted(scope.recipients),
                 "maxAmount": scope.max_amount,
                 "treeBudget": scope.tree_budget,
+                "arguments": scope.arguments or None,
             },
         )
         return task_id
 
     def authorize(self, task_id: str, call: GatedCall) -> tuple[bool, str]:
         d = self._post(
-            "/authorize", {"taskId": task_id, "action": call.action, "recipient": call.recipient, "amount": call.amount}
+            "/authorize",
+            {
+                "taskId": task_id,
+                "action": call.action,
+                "recipient": call.recipient,
+                "amount": call.amount,
+                "arguments": call.arguments or None,
+            },
         )
         return bool(d["allowed"]), str(d["reason"])
 
@@ -97,13 +114,16 @@ class TaskScope:
     recipients: set[str] = field(default_factory=set)
     max_amount: float = 0.0
     tree_budget: float | None = None
+    # "action/argument" -> the value the user approved.
+    arguments: dict[str, str] = field(default_factory=dict)
 
 
-def oracle_scope(ground_truth: list[FunctionCall], env: TaskEnvironment) -> TaskScope:
+def oracle_scope(ground_truth: list[FunctionCall], env: TaskEnvironment, bind_arguments: bool = True) -> TaskScope:
     """The narrowest scope that still lets the task's own ground-truth calls through.
 
-    This is the best case for the defense: a user who approves exactly what the task needs. The realistic variant,
-    where a model proposes the scope from the prompt alone, is `proposed_scope` in run_llm.py.
+    This is the best case for the defense: a user who approves exactly what the task needs. With `bind_arguments`,
+    the scope also fixes the values of `BINDABLE` arguments (e.g. the new password) to the ones the task uses. A
+    realistic variant, where a model proposes the scope from the prompt alone, is still to do.
     """
     scope = TaskScope()
     total = 0.0
@@ -115,6 +135,9 @@ def oracle_scope(ground_truth: list[FunctionCall], env: TaskEnvironment) -> Task
         scope.recipients.add(gated.recipient)
         scope.max_amount = max(scope.max_amount, gated.amount)
         total += gated.amount
+        if bind_arguments:
+            for name, value in gated.arguments.items():
+                scope.arguments.setdefault(f"{gated.action}/{name}", value)
     scope.tree_budget = round(total, 4) if scope.actions else None
     return scope
 

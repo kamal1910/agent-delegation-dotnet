@@ -7,9 +7,19 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Argument binding: `Scope.Bind(action, argument, value)` fixes one argument of one action to one value. A call
+  with a different or missing value is denied (`argument not allowed: <name>`). The chain stores only a SHA-256
+  hash (`Scope.HashArgument`), every hand-off must keep the binding, and conflicting bindings allow no value.
+  `ToolAction` gains optional `Arguments`.
 - `eval/agentdojo` and `eval/AgentDojoGateway`: AgentDojo's banking suite with every state-changing tool call
   authorized by the gateway under an oracle root scope. It includes a model-free run (a fully hijacked agent replays
-  each injection task's goal) and a runner for real models through AgentDojo's own pipeline and attacks.
+  each injection task's goal) and a runner for real models through AgentDojo's own pipeline and attacks. With
+  argument binding, attack success is 0/144 and every task still completes.
+- Attack-suite case A23: an approved refund for another order.
+
+### Changed
+- Receipts record each argument value as its hash (`ToolAction.Redacted`), so values such as a new password never
+  reach the ledger. Chains without bindings, including those issued by 0.5.x, verify unchanged.
 
 ## [0.5.0] - 2026-11-04
 

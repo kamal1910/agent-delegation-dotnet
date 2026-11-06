@@ -217,6 +217,19 @@ public static class Attacks
             DelegationChain chain = new([SignedBlock.Sign(w.UserKey, root)]);
             return w.Send(w.Gateway(), w.HandOff(chain, "Refund"), AttackWorld.Refund(), w.PaymentsKey);
         }),
+
+        // ---- Bound arguments --------------------------------------------------------------------------
+
+        new("A23", "injected action", "Approved refund, but for another order", "argument not allowed: order", w =>
+        {
+            DelegationChain root = DelegationChain.Issue(w.UserKey, w.Root.Last.Scope.Bind("payments.refund", "order", "#4471"),
+                "Refund order #4471", AttackWorld.Public(w.SupportKey));
+            ToolAction otherOrder = AttackWorld.Refund() with
+            {
+                Arguments = new Dictionary<string, string> { ["order"] = "#9999" },
+            };
+            return w.Send(w.Gateway(), w.HandOff(root, "Refund"), otherOrder, w.PaymentsKey);
+        }),
     ];
 
     public static Attack Get(string id) => All.Single(a => a.Id == id);

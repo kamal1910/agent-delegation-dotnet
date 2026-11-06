@@ -96,6 +96,24 @@ DelegationChain toPayments = chain.Delegate(supportAgentKey,
     delegateeKey: DelegationCrypto.PublicKey(paymentsAgentKey));
 ```
 
+### Bind argument values
+
+An approved action is not enough when its effect depends on another argument: "change my password" must mean *this*
+password. `Bind` fixes an argument of one action to one value. The chain stores only its SHA-256 hash, receipts
+record the hash rather than the value, and every hand-off must keep the binding.
+
+```csharp
+Scope approved = new Scope(["account.update_password"], ["self"], 0m, MaxDepth: 1, now.AddHours(1))
+    .Bind("account.update_password", "password", newPassword);
+
+// The call carries the argument; any other value is denied with "argument not allowed: password".
+ToolAction call = new("account.update_password", "self", 0m,
+    new Dictionary<string, string> { ["password"] = newPassword });
+```
+
+A binding constrains only its own action, so a scope that binds a password change still allows the same task's
+payments.
+
 ### Call a tool from the agent
 
 ```csharp
@@ -238,10 +256,11 @@ Wrapping is a hint to the model, not a security boundary. The gateway is what re
 | Request signed more than 2 minutes ago (or ahead) | `stale request` |
 | Signature reused for another route or body | `caller is not the chain holder` |
 | Root ticket without a nonce | `missing root nonce` |
+| Approved action with another value for a bound argument | `argument not allowed: <name>` |
 
 Each row is covered by a test in `tests/AgentDelegation.Tests`.
 
-`tests/AgentDelegation.AttackSuite` runs 22 attacks and 3 legitimate controls against the gateway, each in a
+`tests/AgentDelegation.AttackSuite` runs 23 attacks and 3 legitimate controls against the gateway, each in a
 fresh scenario, and writes the outcomes to a CSV:
 
 ```bash

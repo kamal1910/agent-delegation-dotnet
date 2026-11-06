@@ -4,7 +4,38 @@ using System.Diagnostics.CodeAnalysis;
 namespace AgentDelegation;
 
 /// <summary>A tool call to authorize.</summary>
-public sealed record ToolAction(string Action, string Recipient, decimal Amount);
+/// <param name="Action">The action, e.g. <c>payments.refund</c>.</param>
+/// <param name="Recipient">The payee, account or address.</param>
+/// <param name="Amount">The amount, or zero for actions that move no money.</param>
+/// <param name="Arguments">Other argument values, checked against <see cref="Scope.Arguments"/>.</param>
+public sealed record ToolAction(string Action, string Recipient, decimal Amount,
+                                IReadOnlyDictionary<string, string>? Arguments = null)
+{
+    /// <summary>The same action with every argument value replaced by its hash, for receipts.</summary>
+    public ToolAction Redacted() => Arguments is null || Arguments.Count == 0
+        ? this
+        : this with
+        {
+            Arguments = Arguments.ToDictionary(a => a.Key, a => Scope.HashArgument(a.Value), StringComparer.Ordinal),
+        };
+
+    /// <inheritdoc />
+    public bool Equals(ToolAction? other) =>
+        other is not null &&
+        Action == other.Action &&
+        Recipient == other.Recipient &&
+        Amount == other.Amount &&
+        SameArguments(Arguments, other.Arguments);
+
+    /// <inheritdoc />
+    public override int GetHashCode() => HashCode.Combine(Action, Recipient, Amount, Arguments?.Count ?? 0);
+
+    static bool SameArguments(IReadOnlyDictionary<string, string>? a, IReadOnlyDictionary<string, string>? b)
+    {
+        if (a is null || a.Count == 0) return b is null || b.Count == 0;
+        return b is not null && a.Count == b.Count && a.All(x => b.TryGetValue(x.Key, out string? v) && v == x.Value);
+    }
+}
 
 /// <summary>A record of one authorization decision.</summary>
 public sealed record Receipt(

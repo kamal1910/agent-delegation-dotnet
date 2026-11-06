@@ -46,6 +46,9 @@ app.MapPost("/tasks", (TaskScope t) =>
 {
     DateTimeOffset now = DateTimeOffset.UtcNow;
     Scope scope = new(t.Actions, t.Recipients, t.MaxAmount, MaxDepth: 1, now.AddHours(1));
+    // Keys are "action/argument", e.g. "banking.update_password/password".
+    foreach ((string key, string value) in t.Arguments ?? [])
+        scope = scope.Bind(key[..key.LastIndexOf('/')], key[(key.LastIndexOf('/') + 1)..], value);
 
     DelegationChain root = DelegationChain.Issue(userKey, scope, t.Intent, orchestrator, t.TreeBudget);
     policies.TryGetPolicy(specialist, out Scope? specialistPolicy);
@@ -62,7 +65,7 @@ app.MapPost("/authorize", async (ToolCall call) =>
 {
     if (!tasks.TryGetValue(call.TaskId, out DelegationChain? chain)) return Results.NotFound("unknown task");
 
-    ToolAction action = new(call.Action, call.Recipient, call.Amount);
+    ToolAction action = new(call.Action, call.Recipient, call.Amount, call.Arguments);
     byte[] body = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(action, DelegationCrypto.Json));
     RequestProof proof = RequestProof.For("POST", $"/tools/{call.Action}", DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
         RequestProof.NewNonce(), null, body);
@@ -77,12 +80,13 @@ app.MapGet("/health", () => Results.Ok("ok"));
 
 app.Run();
 
-/// <summary>The scope a user approves for one task.</summary>
+/// <summary>The scope a user approves for one task. <see cref="Arguments"/> are bound to these exact values.</summary>
 sealed record TaskScope(string TaskId, string Intent, string[] Actions, string[] Recipients, decimal MaxAmount,
-                        decimal? TreeBudget = null);
+                        decimal? TreeBudget = null, Dictionary<string, string>? Arguments = null);
 
 /// <summary>One sensitive tool call. Non-monetary actions use amount 0 and the account owner as recipient.</summary>
-sealed record ToolCall(string TaskId, string Action, string Recipient, decimal Amount);
+sealed record ToolCall(string TaskId, string Action, string Recipient, decimal Amount,
+                       Dictionary<string, string>? Arguments = null);
 
 sealed record Decision(bool Allowed, string Reason);
 
