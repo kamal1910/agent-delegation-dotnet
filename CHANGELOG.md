@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-05
+
 ### Added
 - Argument binding: `Scope.Bind(action, argument, value)` fixes one argument of one action to one value. A call
   with a different or missing value is denied (`argument not allowed: <name>`). The chain stores only a SHA-256
@@ -136,7 +138,8 @@ All notable changes to this project are documented here. The format follows
 - `AgentDelegation.AspNetCore`: gateway middleware for tool APIs or YARP.
 - `AgentDelegation.SemanticKernel`: function filter that marks tool and sub-agent results as untrusted.
 
-[Unreleased]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/kamal1910/agent-delegation-dotnet/compare/v0.4.0...v0.4.1

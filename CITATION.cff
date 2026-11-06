@@ -13,8 +13,8 @@ abstract: >-
 authors:
   - family-names: Ayyau
     given-names: Kamalakannan
-version: 0.5.0
-date-released: 2026-11-04
+version: 0.6.0
+date-released: 2026-11-05
 doi: 10.5281/zenodo.23909930
 identifiers:
   - type: doi
