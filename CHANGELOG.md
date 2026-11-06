@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `eval/agentdojo` and `eval/AgentDojoGateway`: AgentDojo's banking suite with every state-changing tool call
+  authorized by the gateway under an oracle root scope. It includes a model-free run (a fully hijacked agent replays
+  each injection task's goal) and a runner for real models through AgentDojo's own pipeline and attacks.
+
 ## [0.5.0] - 2026-11-04
 
 ### Added
