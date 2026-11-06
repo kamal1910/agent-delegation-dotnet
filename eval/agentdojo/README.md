@@ -57,3 +57,9 @@ set ANTHROPIC_API_KEY=...
 A full run is 16 × 10 × 2 = 320 conversations per model. Run `--limit 2` first to see the cost. `--defense` combines
 the gateway with one of AgentDojo's defenses (for example `repeat_user_prompt` or `spotlighting_with_delimiting`).
 `--provider openai-compatible --base-url ...` runs a local model through Ollama, vLLM or LM Studio.
+
+**anthropic SDK 2.x:** AgentDojo 0.1.35 accepts any `anthropic>=0.47.0`, but SDK 2.x changed two things its Claude
+client relies on. `MessageParam` can no longer be called, and `messages.stream()` no longer takes `temperature`.
+`run_llm.py` adapts AgentDojo's client at startup (`patch_agentdojo_for_new_anthropic_sdk`). Without `temperature`,
+Claude samples at the API default rather than AgentDojo's temperature 0, so run each configuration more than once
+and report the spread.

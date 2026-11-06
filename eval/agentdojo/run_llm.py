@@ -34,10 +34,59 @@ from gate import GateLog, GatewayClient, gated_runtime, oracle_scope
 BENCHMARK_VERSION = "v1.2.2"
 
 
+def patch_agentdojo_for_new_anthropic_sdk() -> None:
+    """Adapt AgentDojo 0.1.35's Anthropic client code to anthropic SDK 2.x. It declares `anthropic>=0.47.0` with no
+    upper bound, and 2.x changed two things it relies on:
+
+    - `anthropic.types.MessageParam` is now a Union of role-specific TypedDicts, which cannot be called. TypedDicts
+      are plain dicts at runtime, so user messages are built as dicts directly.
+    - `messages.stream()` no longer takes `temperature`. The request is otherwise the same, so it is sent without
+      it, and the model samples at the API default instead of AgentDojo's temperature 0. Repeat runs to report
+      variance.
+
+    Both changes are skipped on SDK versions where they are not needed.
+    """
+    import inspect
+    import typing
+
+    from anthropic import NOT_GIVEN, BadRequestError
+    from anthropic.resources.messages import AsyncMessages
+    from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_random_exponential
+
+    from agentdojo.agent_pipeline.llms import anthropic_llm
+
+    if typing.get_origin(anthropic_llm.MessageParam) is typing.Union:
+        anthropic_llm.MessageParam = dict  # type: ignore[assignment,misc]
+
+    if "temperature" in inspect.signature(AsyncMessages.stream).parameters:
+        return
+
+    # Same as anthropic_llm.chat_completion_request, without `temperature`.
+    @retry(
+        wait=wait_random_exponential(multiplier=1, max=40),
+        stop=stop_after_attempt(3),
+        retry=retry_if_not_exception_type(BadRequestError),
+    )
+    async def chat_completion_request(client, model, messages, tools, max_tokens, system_prompt=None,
+                                      temperature=None, thinking_budget_tokens=None):
+        async with client.messages.stream(
+            model=model,
+            messages=messages,
+            tools=tools or NOT_GIVEN,
+            max_tokens=max_tokens,
+            system=system_prompt or NOT_GIVEN,
+            thinking={"type": "enabled", "budget_tokens": thinking_budget_tokens} if thinking_budget_tokens else NOT_GIVEN,
+        ) as stream:
+            return await stream.get_final_message()
+
+    anthropic_llm.chat_completion_request = chat_completion_request
+
+
 def build_pipeline(args: argparse.Namespace) -> AgentPipeline:
     if args.provider == "anthropic":
         import anthropic
 
+        patch_agentdojo_for_new_anthropic_sdk()
         llm = AnthropicLLM(anthropic.Anthropic(), args.model)
     else:
         import openai
