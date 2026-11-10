@@ -10,6 +10,9 @@ All notable changes to this project are documented here. The format follows
 - `eval/agentdojo/propose_scope.py`: Claude proposes each AgentDojo task's root scope from the user's request alone
   (structured output, refusal fallbacks on), saved to JSON. `run_ground_truth.py --proposed-scopes` adds a
   `gateway-proposed` mode to measure how many tasks such scopes cover and how many attacks they stop.
+- `eval/agentdojo/results/manual_scopes.json`: scopes written by hand from each request alone, using the same
+  rules. With them every attack is still blocked (0/144 succeed), and 7 of 16 tasks complete (9/16 as AgentDojo
+  scores it; two of its checks pass even when the agent does nothing).
 
 ## [0.6.0] - 2026-11-05
 

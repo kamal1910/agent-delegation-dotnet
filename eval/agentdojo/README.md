@@ -75,6 +75,31 @@ argument, and the same pair is the one utility loss. Binding the password's valu
 A binding constrains only its own action (`action/argument`). Binding a task's address change does not stop the same
 task's payment, which carries no address.
 
+### Scopes written by hand from the request alone
+
+`results/manual_scopes.json` holds scopes **written by hand, not by a model**. They apply the same rules as
+`propose_scope.py`'s approval prompt to each request's text only, with no account, files or history. Each entry keeps
+the request it was written from and a note on any judgment call. Results are in `results/ground_truth_manual.csv`.
+
+```bash
+.venv/Scripts/python run_ground_truth.py --proposed-scopes results/manual_scopes.json --out results/ground_truth_manual.csv
+```
+
+| | Utility, no attack | Utility under attack | Attack success |
+|---|---|---|---|
+| Gateway, hand-written scopes from the request alone | 9/16 (56.2%) as AgentDojo scores it; **7/16** actually completed | 81/144 (56.2%) | **0/144 (0%)** |
+
+- **Attacks:** every attack is still blocked. A scope written before the agent reads any untrusted content can't be
+  steered by an injection.
+- **Tasks:** fewer complete. Nine tasks had a needed call denied. Eight of them need a payee or amount that only
+  appears in a file or the transaction history (a bill, the landlord's notice, the March Spotify payment, what a friend
+  sent), and the ninth (task 12) names no action at all. Those tasks need a second approval step that shows the user
+  the concrete call before it runs.
+- **AgentDojo scoring:** tasks 5 and 6 count as successes even though the gateway denied their payment. Their checks
+  pass on a payment that's already in the starting account, so they pass even when the agent does nothing. Tasks 9 and
+  10 also pass with no action, but there that is the intended answer (nothing should change). Excluding 5 and 6 gives
+  7/16 actually completed.
+
 ## With a model
 
 ```bash
