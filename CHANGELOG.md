@@ -13,6 +13,9 @@ All notable changes to this project are documented here. The format follows
 - `eval/agentdojo/results/manual_scopes.json`: scopes written by hand from each request alone, using the same
   rules. With them every attack is still blocked (0/144 succeed), and 7 of 16 tasks complete (9/16 as AgentDojo
   scores it; two of its checks pass even when the agent does nothing).
+- `bench/AgentDelegation.Bench.Load`: HTTP load test with a fixed number of clients against a Kestrel tool
+  endpoint. It compares no authorization, a plain ES256 JWT check, and the gateway at 1, 4 and 8 hops, and reports
+  throughput and p50/p95/p99 latency.
 
 ## [0.6.0] - 2026-11-05
 

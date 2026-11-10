@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/bench/">
     <Project Path="bench/AgentDelegation.Bench.FanOut/AgentDelegation.Bench.FanOut.csproj" />
+    <Project Path="bench/AgentDelegation.Bench.Load/AgentDelegation.Bench.Load.csproj" />
     <Project Path="bench/AgentDelegation.Bench.Micro/AgentDelegation.Bench.Micro.csproj" />
   </Folder>
   <Folder Name="/eval/">

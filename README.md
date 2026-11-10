@@ -293,6 +293,32 @@ dotnet run -c Release --project bench/AgentDelegation.Bench.FanOut -- --runs 100
 Set `REDIS_CONNECTION` to also run it against `RedisBudgetStore`. With tree budgets total spend stays at $1,200
 for every K; with a ticket per branch it grows to K × $1,200.
 
+`bench/AgentDelegation.Bench.Load` measures the gateway under concurrent HTTP load. It starts a Kestrel server with
+one tool endpoint and drives it with a fixed number of clients, comparing the bare endpoint, a plain ES256 JWT check,
+and the gateway with 1-, 4- and 8-hop chains:
+
+```bash
+dotnet run -c Release --project bench/AgentDelegation.Bench.Load -- --concurrency 32 --seconds 20 --out load.csv
+```
+
+So that one signed request can be replayed for the whole run, the gateway uses a no-op nonce store and discards
+receipts. Results with 32 clients on one laptop (Intel i7-1260P), where the server and the load generator share its
+CPU:
+
+| | Linux (Docker on WSL2), req/s | p50 / p99 ms | Windows 11, req/s | p50 / p99 ms |
+|---|---|---|---|---|
+| No authorization | 69,604 | 0.3 / 2.1 | 37,034 | 0.3 / 5.4 |
+| JWT (ES256) | 14,575 | 1.6 / 10.0 | 12,676 | 2.0 / 9.8 |
+| Gateway, 1 hop | 5,708 | 4.1 / 31.3 | 5,699 | 4.8 / 16.4 |
+| Gateway, 4 hops | 4,171 | 6.1 / 31.9 | 1,725 | 9.0 / 113.8 |
+| Gateway, 8 hops | 2,723 | 9.6 / 46.2 | 554 | 20.7 / 822.3 |
+
+A one-hop chain costs about 2.5× a JWT check: two ECDSA verifications (the user's root and the request proof)
+instead of one. Deeper chains add one verification per hop. On Linux this grows gently. On Windows, signature checks
+are much more expensive and the CPU saturates, which inflates the tail latency at 4 and 8 hops. To run it on Linux
+without the .NET SDK, publish self-contained (`dotnet publish -r linux-x64 --self-contained`) and run the binary in
+any Linux container.
+
 ## Wire format
 
 Signatures cover exact bytes, never a re-serialization, so other languages can produce and check chains:
