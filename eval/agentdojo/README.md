@@ -10,6 +10,7 @@ change is the tool runtime, which sends `send_money`, `schedule_transaction`, `u
 | `../AgentDojoGateway` | .NET service that plays the user, the orchestrator agent and the banking specialist for each task, and runs the real `DelegationAuthorizer` on every gated call |
 | `gate.py` | `GatedRuntime` (the gated tool runtime), the gateway client, and the oracle scope |
 | `run_ground_truth.py` | No model: replays each task's ground truth, and each injection task's goal as a fully hijacked agent |
+| `propose_scope.py` | Claude proposes each task's root scope from the user's request alone; saved to JSON for `run_ground_truth.py` |
 | `run_llm.py` | A real model through AgentDojo's pipeline and prompt-injection attack |
 
 ## Setup
@@ -27,8 +28,31 @@ amount and total that the task's own ground-truth calls need. This is the best c
 (`update_password`, `update_user_info`) are authorized with recipient `self` and amount 0. Their values (the new
 password, the new address fields) are also bound in the root, per action, so only the values the user approved pass.
 
-A realistic variant, where a model proposes the scope from the prompt alone before seeing any tool output, is still
-to do.
+### Realistic scopes: proposed from the request alone
+
+The oracle scope gives the user exactly what each task needs. `propose_scope.py` instead has Claude play the approval
+step: before the agent runs, it reads **only the user's request**, with no account, files or history (and so no
+injected text), and writes the narrowest scope the request asks for. It leaves out values the request doesn't state,
+such as a payee named in a file. One request per user task, with structured output so the scope always matches the
+schema.
+
+```bash
+set ANTHROPIC_API_KEY=...
+.venv/Scripts/python propose_scope.py --dry-run          # print the first request; sends nothing
+.venv/Scripts/python propose_scope.py --out results/proposed_scopes.json
+.venv/Scripts/python run_ground_truth.py --proposed-scopes results/proposed_scopes.json
+```
+
+That adds a `gateway-proposed` row. Its "utility, no attack" figure is the share of tasks a scope written from the
+request alone can cover. Many banking tasks take their payee or amount from a file or the transaction history ("pay
+the bill in `bill-december-2023.txt`"), which an up-front approval can't know, so those tasks need a second approval
+step that shows the user the concrete call.
+
+- **Model:** the default is `claude-opus-5-5`; change it with `--model`.
+- **Refusals:** requests opt into server-side refusal fallbacks (`fallbacks: "default"`), so if a safety classifier
+  declines, the API retries on a fallback model. `served_by` in the JSON records which model answered.
+- **Testing without a key:** `--from-oracle` writes the oracle scopes in the same format with no model call. The
+  `gateway-proposed` row then matches the `gateway` row exactly, which checks the whole pipeline.
 
 ## No model: a fully hijacked agent
 

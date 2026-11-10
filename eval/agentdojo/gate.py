@@ -149,6 +149,26 @@ class GateLog:
     decisions: list[tuple[str, str, float, bool, str]] = field(default_factory=list)
 
 
+ACCOUNT_ACTIONS = {"banking.update_password", "banking.update_user_info"}
+
+
+def scope_from_proposal(proposal: dict | None) -> TaskScope:
+    """A scope proposed by propose_scope.py, in the form the gateway takes. A missing or failed proposal approves
+    nothing, so every state-changing call is denied."""
+    scope = TaskScope()
+    if not proposal:
+        return scope
+    scope.actions = set(proposal["actions"])
+    scope.recipients = set(proposal["recipients"])
+    if scope.actions & ACCOUNT_ACTIONS:
+        scope.recipients.add(SELF)
+    scope.max_amount = float(proposal["max_amount"])
+    # An unknown total leaves the tree budget at the per-action limit, the gateway's default.
+    scope.tree_budget = float(proposal["total_amount"]) or None
+    scope.arguments = {f"{b['action']}/{b['argument']}": b["value"] for b in proposal["bound_arguments"]}
+    return scope
+
+
 def gated_runtime(client: GatewayClient, task_id: str, log: GateLog) -> type[FunctionsRuntime]:
     """A runtime class bound to one gateway task, in the form `TaskSuite.run_task_with_pipeline` expects."""
 

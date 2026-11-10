@@ -12,6 +12,7 @@ Each run happens three times:
   gateway-unbound   every state-changing call routed through the gateway, under the oracle scope (exactly the
                     actions, recipients and amounts the task's ground truth needs)
   gateway           the same, with the values of account-change arguments (e.g. the new password) bound in the root
+  gateway-proposed  (with --proposed-scopes) the scope Claude proposed from the user's request alone (propose_scope.py)
 
   dotnet run -c Release --project eval/AgentDojoGateway          # in another terminal
   .venv/Scripts/python run_ground_truth.py --out results/ground_truth.csv
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -31,7 +33,7 @@ from agentdojo.functions_runtime import EmptyEnv, Env, FunctionsRuntime
 from agentdojo.task_suite.load_suites import get_suite
 from agentdojo.types import ChatAssistantMessage, ChatMessage, ChatToolResultMessage, text_content_block_from_string
 
-from gate import GateLog, GatewayClient, gated_runtime, oracle_scope
+from gate import GateLog, GatewayClient, gated_runtime, oracle_scope, scope_from_proposal
 
 BENCHMARK_VERSION = "v1.2.2"
 MODES = ("none", "gateway-unbound", "gateway")
@@ -84,12 +86,20 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--gateway", default="http://127.0.0.1:5199")
     parser.add_argument("--out", default="results/ground_truth.csv")
+    parser.add_argument("--proposed-scopes", default=None,
+                        help="JSON from propose_scope.py; adds the gateway-proposed mode")
     args = parser.parse_args()
 
     suite = get_suite(BENCHMARK_VERSION, "banking")
     client = GatewayClient(args.gateway)
     defaults = suite.get_injection_vector_defaults()
     rows: list[dict] = []
+
+    modes = list(MODES)
+    proposals: dict[str, dict] = {}
+    if args.proposed_scopes:
+        proposals = json.loads(Path(args.proposed_scopes).read_text(encoding="utf-8"))["proposals"]
+        modes.append("gateway-proposed")
 
     for user_task in suite.user_tasks.values():
         # The scope the user approves, from the task's own ground truth on its starting environment.
@@ -99,9 +109,12 @@ def main() -> None:
             "gateway-unbound": oracle_scope(ground_truth, start, bind_arguments=False),
             "gateway": oracle_scope(ground_truth, start, bind_arguments=True),
         }
+        if proposals:
+            # What the approval step granted from the request alone; a failed proposal grants nothing.
+            scopes["gateway-proposed"] = scope_from_proposal(proposals.get(user_task.ID, {}).get("scope"))
 
         for injection_task in [None, *suite.injection_tasks.values()]:
-            for mode in MODES:
+            for mode in modes:
                 log = GateLog()
                 runtime_class: type[FunctionsRuntime] = FunctionsRuntime
                 scope = scopes.get(mode)
@@ -140,7 +153,7 @@ def main() -> None:
         return f"{hits}/{len(selected)} ({100 * hits / max(len(selected), 1):.1f}%)"
 
     print(f"banking {BENCHMARK_VERSION}: {len(suite.user_tasks)} user tasks, {len(suite.injection_tasks)} injection tasks")
-    for mode in MODES:
+    for mode in modes:
         print(
             f"  {mode:16} utility (no attack) {rate(mode, 'utility', False):>16}   "
             f"utility under attack {rate(mode, 'utility', True):>16}   "
