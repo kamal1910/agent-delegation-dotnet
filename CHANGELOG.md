@@ -16,6 +16,9 @@ All notable changes to this project are documented here. The format follows
 - `bench/AgentDelegation.Bench.Load`: HTTP load test with a fixed number of clients against a Kestrel tool
   endpoint. It compares no authorization, a plain ES256 JWT check, and the gateway at 1, 4 and 8 hops, and reports
   throughput and p50/p95/p99 latency.
+- `eval/before-0.1.1`: the attack-suite cases run against AgentDelegation 0.1.1 from NuGet. On 0.1.1, 6 of the
+  20 attacks it can express succeed (confused deputy, replay, stale and redirected requests, idempotency-key
+  reuse) and a second identical approval is wrongly denied.
 
 ## [0.6.0] - 2026-11-05
 

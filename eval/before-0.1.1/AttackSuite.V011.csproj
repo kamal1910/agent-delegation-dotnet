@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Runs the attack suite's cases against the first release, AgentDelegation 0.1.1, taken from NuGet so that it
+       tests the code as shipped. Kept out of AgentDelegation.slnx: it references the old package, not src/. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AgentDelegation" Version="0.1.1" />
+  </ItemGroup>
+
+</Project>

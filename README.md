@@ -269,6 +269,10 @@ dotnet test tests/AgentDelegation.AttackSuite
 
 The file is written next to the test assembly as `attack-suite.csv`, or to the path in `ATTACK_SUITE_RESULTS`.
 
+[`eval/before-0.1.1`](eval/before-0.1.1) runs the same cases against the first release, 0.1.1. There, 6 of the 20
+attacks it can express succeed, and a second identical approval is wrongly denied. Its README lists which release
+fixed each one.
+
 ## Performance
 
 `bench/AgentDelegation.Bench.Micro` measures chain verification, encoding and the full gateway decision as the
