@@ -13,6 +13,7 @@ abstract: >-
 authors:
   - family-names: Ayyau
     given-names: Kamalakannan
+    orcid: "https://orcid.org/0009-0000-5221-8368"
 version: 0.6.0
 date-released: 2026-11-05
 doi: 10.5281/zenodo.23909930
