@@ -1,0 +1,36 @@
+# Dapr 1.18.7 runtime for the case study: a Redis state store, placement, scheduler and one daprd sidecar.
+# The .NET worker and driver run on the host and reach the sidecar on localhost:50001.
+#
+#   docker compose -f eval/dapr/docker-compose.yml up -d
+#   docker compose -f eval/dapr/docker-compose.yml down
+
+name: agentdelegation-dapr
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    ports: ["6391:6379"]
+
+  placement:
+    image: ghcr.io/dapr/placement:1.18.7
+    command: ["./placement", "--port", "50005", "--log-level", "warn"]
+
+  scheduler:
+    image: ghcr.io/dapr/scheduler:1.18.7
+    command: ["./scheduler", "--port", "50006", "--etcd-data-dir", "/var/lock/dapr/scheduler", "--log-level", "warn"]
+    tmpfs: ["/var/lock/dapr/scheduler"]
+
+  daprd:
+    image: ghcr.io/dapr/daprd:1.18.7
+    command: ["./daprd",
+              "--app-id", "refund-workflow",
+              "--dapr-grpc-port", "50001",
+              "--dapr-http-port", "3500",
+              "--dapr-listen-addresses", "0.0.0.0",
+              "--placement-host-address", "placement:50005",
+              "--scheduler-host-address", "scheduler:50006",
+              "--resources-path", "/components",
+              "--log-level", "warn"]
+    volumes: ["./components:/components:ro"]
+    ports: ["50001:50001", "3500:3500"]
+    depends_on: [redis, placement, scheduler]

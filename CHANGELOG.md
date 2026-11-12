@@ -19,6 +19,10 @@ All notable changes to this project are documented here. The format follows
 - `eval/before-0.1.1`: the attack-suite cases run against AgentDelegation 0.1.1 from NuGet. On 0.1.1, 6 of the
   20 attacks it can express succeed (confused deputy, replay, stale and redirected requests, idempotency-key
   reuse) and a second identical approval is wrongly denied.
+- `eval/dapr`: the refund flow as a Dapr 1.18 workflow (approval event, a child workflow per hop, signing in
+  activities), with the worker killed at each step and a user who cancels mid-call. The refund ran exactly once
+  in all 40 crash runs. Only a short hand-off lifetime stopped a call already in flight. No private key appeared
+  in the state store.
 
 ## [0.6.0] - 2026-11-05
 

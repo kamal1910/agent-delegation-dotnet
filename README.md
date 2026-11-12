@@ -346,6 +346,11 @@ The library has no Dapr dependency, but it fits Dapr Workflow cleanly:
 - Run each hop as a child workflow; derive the `Idempotency-Key` from the workflow instance id so activity retries aren't charged twice.
 - Treat a child workflow's output as untrusted data.
 - Use Dapr mTLS and access-control policies for service identity. Dapr proves which service is calling; the chain proves which human authorized what.
+- Keep hand-off lifetimes short. Terminating a workflow can't recall a tool call that is already in flight, but an
+  expired hand-off makes the gateway refuse it.
+
+[`eval/dapr`](eval/dapr) runs this design on Dapr 1.18 and kills the worker at each step. In all 40 crash runs the
+refund ran exactly once. No private key appeared in the workflow state store.
 
 ## Security notes
 

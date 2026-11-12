@@ -6,6 +6,7 @@
   </Folder>
   <Folder Name="/eval/">
     <Project Path="eval/AgentDojoGateway/AgentDojoGateway.csproj" />
+    <Project Path="eval/dapr/DaprCaseStudy.csproj" />
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/RefundDemo/RefundDemo.csproj" />

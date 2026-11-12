@@ -1,0 +1,5 @@
+pattern,keys_containing,keys_scanned,bytes_scanned
+"control: root chain (expected in state)",630,4730,3200154
+"user private key",0,4730,3200154
+"support private key",0,4730,3200154
+"payments private key",0,4730,3200154
