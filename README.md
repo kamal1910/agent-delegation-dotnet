@@ -362,6 +362,24 @@ This is a reference implementation of the design, not an audited token format. F
 - Keep gateway clocks in sync (NTP); requests outside `MaxClockSkew` are refused.
 - Consider an audited attenuable token format such as [Biscuit](https://www.biscuitsec.org/), and get a security review.
 
+## Paper
+
+The design and its evaluation are described in:
+
+> K. Ayyau, "Intersection Authority: Enforcing Attenuated Delegation in Multi-Agent LLM Systems," preprint, 2026.
+> [doi:10.5281/zenodo.24299630](https://doi.org/10.5281/zenodo.24299630)
+
+```bibtex
+@misc{ayyau2026intersection,
+  author    = {Ayyau, Kamalakannan},
+  title     = {Intersection Authority: Enforcing Attenuated Delegation in Multi-Agent {LLM} Systems},
+  year      = {2026},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.24299630},
+  note      = {Preprint}
+}
+```
+
 ## Build
 
 ```bash
